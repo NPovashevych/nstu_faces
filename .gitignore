@@ -1,0 +1,54 @@
+# virtual environment
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# logs
+logs/
+*.log
+
+# env / secrets
+.env
+.env.*
+*.env
+
+# PyCharm
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Alembic cache
+alembic/__pycache__/
+alembic/versions/__pycache__/
+
+# test/cache
+.pytest_cache/
+.mypy_cache/
+
+# local files
+*.sqlite
+*.db
+
+# media / heavy files
+*.mp4
+*.mxf
+*.avi
+*.mov
+*.jpg
+*.jpeg
+*.png
+*.webp
+*.avif
+
+# model files
+*.onnx
+*.pkl
+*.pickle
