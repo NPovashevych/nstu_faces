@@ -73,6 +73,7 @@ class DBMedia(BASE):
 
     freezes = relationship("DBFreeze", back_populates="media", cascade="all, delete-orphan")
     iterations = relationship("DBIteration", back_populates="media", cascade="all, delete-orphan")
+    descriptions = relationship("DBMediaDescription", back_populates="media", cascade="all, delete-orphan")
 
 
 class DBFreeze(BASE):
@@ -141,3 +142,17 @@ class DBFace(BASE):
 
     iteration_id = Column(Integer, ForeignKey("iteration.id"), nullable=False, index=True)
     iteration = relationship("DBIteration", back_populates="faces")
+
+
+class DBMediaDescription(BASE):
+    __tablename__ = "media_description"
+    id = Column(Integer, primary_key=True)
+
+    media_id = Column(Integer, ForeignKey("media.id"), nullable=False, index=True)
+    media = relationship("DBMedia", back_populates="descriptions")
+
+    section = Column(String, nullable=True, index=True)
+    description = Column(String, nullable=True)
+    date = Column(String, nullable=True, index=True)
+    duration = Column(String, nullable=True, index=True)
+    journalist = Column(String, nullable=True, index=True)
