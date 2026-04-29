@@ -17,10 +17,20 @@ def get_freezes_by_media(db: Session, media_id: int):
 
 
 def create_freeze(db: Session, freeze: FreezeCreate):
+    existing = (
+        db.query(DBFreeze)
+        .filter(DBFreeze.freeze_path == freeze.freeze_path)
+        .first()
+    )
+
+    if existing:
+        return existing
+
     db_freeze = DBFreeze(
         time_in=freeze.time_in,
         time_out=freeze.time_out,
         media_id=freeze.media_id,
+        freeze_path=freeze.freeze_path,
     )
 
     db.add(db_freeze)

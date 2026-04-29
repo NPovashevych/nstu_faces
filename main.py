@@ -1,10 +1,13 @@
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from routers import routes_user, routes_embedding, routes_person, routes_media_description, routes_media
 from routers import routes_freeze, routes_iteration, routes_face, routes_history
 
-app = FastAPI()
+from services.config import FREEZE_FOLDER
 
+app = FastAPI()
+app.mount("/freezes", StaticFiles(directory=str(FREEZE_FOLDER)), name="freezes")
 
 @app.get("/")
 async def root():

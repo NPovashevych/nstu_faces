@@ -54,7 +54,7 @@ BLUR = 14.9
 DUPLICATE_SIMILARITY = 0.98
 
 MAX_DIST_FROM_MEAN = 0.40
-MAX_PAIRWISE_DIST = 0.60
+MAX_PAIRWISE_DIST = 0.70
 
 
 def load_people_db(path: Path) -> dict:

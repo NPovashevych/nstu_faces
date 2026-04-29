@@ -82,6 +82,7 @@ class DBFreeze(BASE):
     id = Column(Integer, primary_key=True)
     time_in = Column(Float, nullable=False)
     time_out = Column(Float, nullable=False)
+    freeze_path = Column(String, nullable=False, unique=True, index=True)
     created_at = Column(DateTime(timezone=True), default=func.now(), nullable=False)
 
     media_id = Column(Integer, ForeignKey("media.id"), nullable=False, index=True)
@@ -127,6 +128,7 @@ class DBFace(BASE):
     id = Column(Integer, primary_key=True)
     bbox = Column(ARRAY(Float), nullable=False)
     gender = Column(SAEnum(FaceGender, name="face_gender"), nullable=False, index=True, default=FaceGender.unknown, server_default=text("'unknown'"))
+    quality = Column(Float, nullable=True, index=True)
     confidence = Column(Integer, nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), default=func.now(), nullable=False)
 

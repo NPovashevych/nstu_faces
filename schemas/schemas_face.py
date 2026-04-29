@@ -13,6 +13,7 @@ from schemas.schemas_iteration import IterationRead
 class FaceBase(BaseModel):
     bbox: list[float]
     gender: FaceGender = FaceGender.unknown
+    quality: Optional[float] = None
     confidence: Optional[int] = None
 
     embedding_id: int
@@ -28,6 +29,7 @@ class FaceCreate(FaceBase):
 class FaceUpdate(BaseModel):
     bbox: Optional[list[float]] = None
     gender: Optional[FaceGender] = None
+    quality: Optional[float] = None
     confidence: Optional[int] = None
 
     embedding_id: Optional[int] = None

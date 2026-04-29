@@ -28,6 +28,7 @@ def create_face(db: Session, face: FaceCreate):
     db_face = DBFace(
         bbox=face.bbox,
         gender=face.gender,
+        quality=face.quality,
         confidence=face.confidence,
         embedding_id=face.embedding_id,
         freeze_id=face.freeze_id,

@@ -14,7 +14,7 @@ URL = "https://www.wikidata.org/w/api.php"
 REQUEST_DELAY = 0.05
 
 HEADERS = {
-    "User-Agent": "NSTU-Faces-Parser/1.0"
+    "User-Agent": "WikidataParserBot/1.0 (Nataly research; interchanal@ukr.net)"
 }
 
 
