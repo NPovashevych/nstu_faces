@@ -21,6 +21,7 @@ class PersonsUpdate(BaseModel):
     q_code: Optional[str] = None
     link: Optional[str] = None
     status: Optional[PersonStatus] = None
+    cluster_id: Optional[int] = None
 
 
 class PersonsRead(PersonsBase):
@@ -28,6 +29,7 @@ class PersonsRead(PersonsBase):
     code: str
     created_at: datetime
     updated_at: datetime
+    cluster_id: Optional[int] = None
     cluster_tag: Optional[str] = None
     cluster_distance: Optional[float] = None
 

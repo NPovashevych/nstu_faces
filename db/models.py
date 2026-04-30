@@ -37,6 +37,7 @@ class DBPerson(BASE):
     status = Column(SAEnum(PersonStatus, name="person_status"), nullable=False, default=PersonStatus.unknown, server_default=text("'unknown'"))
     created_at = Column(DateTime(timezone=True), default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now(), nullable=False)
+    cluster_id = Column(Integer, nullable=True, index=True)
     cluster_tag = Column(String, nullable=True, index=True)
     cluster_distance = Column(Float, nullable=True)
 

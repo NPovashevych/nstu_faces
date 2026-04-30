@@ -7,6 +7,7 @@ import cv2
 import numpy as np
 from insightface.app import FaceAnalysis
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from db.session import SessionLocal
 from db.enums import EmbeddingType, FaceGender, IterationStatus, PersonStatus
@@ -121,27 +122,18 @@ def find_best_known_match(embedding, reference_embeddings):
 
 
 def get_next_unknown_cluster_number(db: Session) -> int:
-    persons = (
-        db.query(DBPerson)
-        .filter(DBPerson.name.like("unknown_cluster_%"))
-        .all()
+    max_cluster_id = (
+        db.query(func.max(DBPerson.cluster_id))
+        .filter(DBPerson.status == PersonStatus.unknown)
+        .scalar()
     )
 
-    max_num = 0
-
-    for person in persons:
-        try:
-            num = int(person.name.replace("unknown_cluster_", ""))
-            max_num = max(max_num, num)
-        except ValueError:
-            continue
-
-    return max_num + 1
+    return (max_cluster_id or 0) + 1
 
 
 def create_unknown_cluster_person(db: Session):
-    next_num = get_next_unknown_cluster_number(db)
-    cluster_tag = f"unknown_cluster_{next_num:06d}"
+    cluster_id = get_next_unknown_cluster_number(db)
+    cluster_tag = f"unknown_cluster_{cluster_id:06d}"
 
     person_create = PersonsCreate(
         name=cluster_tag,
@@ -152,6 +144,7 @@ def create_unknown_cluster_person(db: Session):
 
     db_person = create_person(db, person_create, code=cluster_tag)
 
+    db_person.cluster_id = cluster_id
     db_person.cluster_tag = cluster_tag
     db_person.cluster_distance = 0.0
 
