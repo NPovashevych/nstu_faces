@@ -89,7 +89,7 @@ def is_good_face(img, face):
     q_blur = norm_blur(face_img)
     q_aspect = norm_aspect(bbox)
 
-    score = (0.35 * q_det + 0.25 * q_size + 0.25 * q_blur + 0.15 * q_aspect)
+    score = (0.07 * q_det + 0.07 * q_size + 0.7 * q_blur + 0.16 * q_aspect)
 
 
     return float(score)

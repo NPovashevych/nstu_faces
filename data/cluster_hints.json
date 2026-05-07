@@ -1,0 +1,26 @@
+{
+  "6312": [
+    {
+      "cluster_person_id": 6312,
+      "cluster_id": 1619,
+      "cluster_tag": "unknown_cluster_001619",
+      "suggested_name": "Павліченко Олександр",
+      "comment": null,
+      "source": "lovable",
+      "created_at": "2026-05-07T12:55:11",
+      "status": "pending_review"
+    }
+  ],
+  "6264": [
+    {
+      "cluster_person_id": 6264,
+      "cluster_id": 1571,
+      "cluster_tag": "unknown_cluster_001571",
+      "suggested_name": "Титиш Галина",
+      "comment": null,
+      "source": "lovable",
+      "created_at": "2026-05-07T15:28:20",
+      "status": "pending_review"
+    }
+  ]
+}

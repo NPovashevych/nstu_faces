@@ -4,47 +4,13 @@ import numpy as np
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from services.config import FREEZE_FOLDER
+from routers.commons import similarity_percent_from_distance, normalize, cosine_distance, load_reference_embeddings, make_image_url
 from db.session import get_db
-from db.enums import EmbeddingType
 from db.models import DBPerson, DBFace, DBFreeze, DBMedia, DBEmbedding
+from db.enums import PersonStatus
 
 
 router = APIRouter(prefix="/unknown-clusters", tags=["unknown_clusters"])
-
-
-def normalize(v):
-    return v / (np.linalg.norm(v) + 1e-8)
-
-
-def cosine_distance(a, b):
-    return 1 - float(np.dot(a, b))
-
-
-def similarity_percent_from_distance(distance: float):
-    return round((1 - distance) * 100, 2)
-
-
-def load_reference_embeddings(db: Session):
-    rows = (
-        db.query(DBEmbedding)
-        .join(DBPerson, DBEmbedding.person_id == DBPerson.id)
-        .filter(DBEmbedding.embedding_type == EmbeddingType.reference_face)
-        .all()
-    )
-
-    refs = []
-
-    for row in rows:
-        refs.append({
-            "person_id": row.person_id,
-            "person_name": row.person.name,
-            "person_link": row.person.link,
-            "q_code": row.person.q_code,
-            "vector": normalize(np.array(row.vector, dtype=np.float32)),
-        })
-
-    return refs
 
 
 def find_nearest_known(face_embedding: DBEmbedding, reference_embeddings: list[dict]):
@@ -79,19 +45,14 @@ def find_nearest_known(face_embedding: DBEmbedding, reference_embeddings: list[d
 
     return {
         "person_id": best["person_id"],
-        "name": best["person_name"],
-        "q_code": best["q_code"],
-        "link": best["person_link"],
+        "name": best.get("person_name") or best.get("name"),
+        "q_code": best.get("q_code"),
+        "link": best.get("person_link") or best.get("link"),
         "distance": round(best_dist, 4),
         "similarity_percent": similarity,
         "hint_level": hint_level,
         "hint_label": hint_label,
     }
-
-
-def make_image_url(freeze_path: str):
-    relative_path = Path(freeze_path).relative_to(Path(FREEZE_FOLDER))
-    return f"/freezes/{relative_path.as_posix()}"
 
 
 @router.get("/{cluster_number}")
@@ -103,12 +64,27 @@ def get_unknown_cluster(cluster_number: str, db: Session = Depends(get_db)):
 
     person = (
         db.query(DBPerson)
-        .filter(DBPerson.name == cluster_name)
+        .filter(
+            (DBPerson.name == cluster_name) |
+            (DBPerson.cluster_tag == cluster_name)
+        )
         .first()
     )
 
     if not person:
         raise HTTPException(status_code=404, detail="Cluster not found")
+
+    if person.status != PersonStatus.unknown:
+        return {
+            "cluster": cluster_name,
+            "person_id": person.id,
+            "status": person.status.value if person.status else None,
+            "message": "Кластер уже ідентифіковано",
+            "resolved_name": person.name,
+            "cluster_tag": person.cluster_tag,
+            "count": 0,
+            "items": [],
+        }
 
     reference_embeddings = load_reference_embeddings(db)
 

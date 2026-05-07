@@ -1,17 +1,12 @@
 from pathlib import Path
-from io import BytesIO
-import base64
-
 import cv2
 import numpy as np
-from PIL import Image
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
 from sqlalchemy.orm import Session
 
-from services.config import FREEZE_FOLDER
+from routers.commons import cosine_distance, normalize, make_image_url, image_to_base64, load_reference_embeddings, make_media_url
 from db.session import get_db
-from db.enums import EmbeddingType
-from db.models import DBPerson, DBFace, DBFreeze, DBMedia, DBEmbedding
+from db.models import DBPerson, DBFace, DBFreeze, DBMedia
 
 from services.face_quality import is_good_face
 
@@ -22,7 +17,7 @@ router = APIRouter(prefix="/search", tags=["search"])
 DIST_TOLERANCE = 0.45
 STEP_TOLERANCE = 0.03
 MAX_ACCEPTABLE_DIST = 0.55
-MIN_PHOTO_FACE_QUALITY = 0.15
+MIN_PHOTO_FACE_QUALITY = 0.00
 
 
 _model = None
@@ -39,16 +34,9 @@ def get_model():
             providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
         )
         _model.prepare(ctx_id=0, det_size=(640, 640))
+        #_model.prepare(ctx_id=0)
 
     return _model
-
-
-def normalize(v):
-    return v / (np.linalg.norm(v) + 1e-8)
-
-
-def cosine_distance(a, b):
-    return 1 - float(np.dot(a, b))
 
 
 def get_confidence(dist: float):
@@ -62,11 +50,6 @@ def get_confidence(dist: float):
     return None
 
 
-def make_image_url(freeze_path: str):
-    relative_path = Path(freeze_path).relative_to(Path(FREEZE_FOLDER))
-    return f"/freezes/{relative_path.as_posix()}"
-
-
 def make_bbox_draw(bbox):
     return {
         "x": bbox[0],
@@ -74,38 +57,6 @@ def make_bbox_draw(bbox):
         "w": bbox[2] - bbox[0],
         "h": bbox[3] - bbox[1],
     }
-
-
-def image_to_base64(img_bgr):
-    img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-    pil_img = Image.fromarray(img_rgb)
-
-    buffer = BytesIO()
-    pil_img.save(buffer, format="JPEG")
-
-    return "data:image/jpeg;base64," + base64.b64encode(buffer.getvalue()).decode()
-
-
-def load_reference_embeddings(db: Session):
-    rows = (
-        db.query(DBEmbedding)
-        .join(DBPerson, DBEmbedding.person_id == DBPerson.id)
-        .filter(DBEmbedding.embedding_type == EmbeddingType.reference_face)
-        .all()
-    )
-
-    refs = []
-
-    for row in rows:
-        refs.append({
-            "person_id": row.person_id,
-            "person_name": row.person.name,
-            "q_code": row.person.q_code,
-            "link": row.person.link,
-            "vector": normalize(np.array(row.vector, dtype=np.float32)),
-        })
-
-    return refs
 
 
 def find_best_match(embedding, reference_embeddings):
@@ -126,7 +77,7 @@ def find_best_match(embedding, reference_embeddings):
         return {
             "recognized": False,
             "distance": round(best_dist, 4),
-            "similarity_percent": round((1 - best_dist) * 100, 2),
+            "similarity_percent": round((1 - best_dist*0.5) * 100, 2),
         }
 
     return {
@@ -136,7 +87,7 @@ def find_best_match(embedding, reference_embeddings):
         "q_code": best["q_code"],
         "link": best["link"],
         "distance": round(best_dist, 4),
-        "similarity_percent": round((1 - best_dist) * 100, 2),
+        "similarity_percent": round((1 - best_dist*0.5) * 100, 2),
         "confidence": get_confidence(best_dist),
     }
 
@@ -176,6 +127,8 @@ def get_person_media_result(db: Session, person: DBPerson):
             medias_map[media.id] = {
                 "media_id": media.id,
                 "media_name": Path(media.media_path).name,
+                "media_path": media.media_path,
+                "media_url": make_media_url(media.media_path),
                 "uploaded_by_user_id": media.user_id,
                 "description": get_media_description(media),
                 "frames": [],
@@ -262,8 +215,7 @@ async def search_by_photo(
     for idx, face in enumerate(faces, start=1):
         quality = is_good_face(img, face)
 
-        if quality < MIN_PHOTO_FACE_QUALITY:
-            continue
+        is_low_quality = quality < MIN_PHOTO_FACE_QUALITY
 
         bbox = face.bbox.astype(float).tolist()
         emb = normalize(face.embedding)
@@ -275,6 +227,7 @@ async def search_by_photo(
             "bbox": bbox,
             "bbox_draw": make_bbox_draw(bbox),
             "quality": round(quality, 4),
+            "is_low_quality": is_low_quality,
             "match": match,
         })
 
