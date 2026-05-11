@@ -25,7 +25,7 @@ logging.basicConfig(
 )
 
 
-AUTO_THRESHOLD = 0.42
+AUTO_THRESHOLD = 0.43
 REVIEW_THRESHOLD = 0.46
 
 

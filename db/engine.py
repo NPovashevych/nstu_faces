@@ -1,8 +1,8 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
+from env import DATABASE_URL
 
-DATABASE_URL = "postgresql://faces_admin:12345@localhost:5432/faces_db"
 
 engine = create_engine(
     DATABASE_URL,

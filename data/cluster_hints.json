@@ -22,5 +22,17 @@
       "created_at": "2026-05-07T15:28:20",
       "status": "pending_review"
     }
+  ],
+  "6655": [
+    {
+      "cluster_person_id": 6655,
+      "cluster_id": 1962,
+      "cluster_tag": "unknown_cluster_001962",
+      "suggested_name": "привіт",
+      "comment": null,
+      "source": "lovable",
+      "created_at": "2026-05-08T13:10:26",
+      "status": "pending_review"
+    }
   ]
 }

@@ -20,7 +20,7 @@ logging.basicConfig(
     format="[%(levelname)8s]: %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler("logs/add_media_from_mxf_folder.log", encoding="utf-8"),
+        logging.FileHandler("../services/logs/add_media_from_mxf_folder.log", encoding="utf-8"),
     ],
 )
 

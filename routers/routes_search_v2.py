@@ -82,9 +82,6 @@ def make_bbox_draw(bbox):
     }
 
 
-# -------------------------
-# Cluster hints JSON
-# -------------------------
 
 def load_cluster_hints() -> dict:
     if not CLUSTER_HINTS_PATH.exists():
@@ -132,10 +129,6 @@ def get_latest_cluster_hint(cluster_person_id: int):
 
     return items[-1]
 
-
-# -------------------------
-# Embeddings matching
-# -------------------------
 
 def load_unknown_cluster_embeddings(db: Session):
     rows = (
@@ -243,10 +236,6 @@ def find_best_match(embedding, reference_embeddings, unknown_embeddings):
     return find_best_unknown_cluster(embedding, unknown_embeddings)
 
 
-# -------------------------
-# Media result
-# -------------------------
-
 def get_media_description(media: DBMedia):
     if not media.descriptions:
         return None
@@ -328,10 +317,6 @@ def get_cluster_result_if_exists(db: Session, match: dict | None):
 
     return get_person_media_result(db, cluster_person)
 
-
-# -------------------------
-# Routes
-# -------------------------
 
 @router.get("/person")
 def search_person(name: str, db: Session = Depends(get_db)):
@@ -503,4 +488,3 @@ async def search_by_photo(
         "unknown_cluster_count": len(cluster_faces),
         "cluster_results": cluster_results,
     }
-

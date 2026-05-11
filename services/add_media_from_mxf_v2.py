@@ -16,7 +16,7 @@ from crud.crud_media import get_media_by_path, create_media
 from schemas.schemas_media import MediaCreate
 
 
-MAX_WORKERS = 4
+MAX_WORKERS = 2
 
 
 logging.basicConfig(
