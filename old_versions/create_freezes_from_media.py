@@ -21,12 +21,12 @@ logging.basicConfig(
     format="[%(levelname)8s]: %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler("logs/create_freezes_from_media.log", encoding="utf-8"),
+        logging.FileHandler("../services/logs/create_freezes_from_media.log", encoding="utf-8"),
     ],
 )
 
 
-SCENE_THRESHOLD = 60.0
+# SCENE_THRESHOLD = 60.0
 
 
 def safe_name(name: str) -> str:

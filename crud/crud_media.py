@@ -8,8 +8,12 @@ def get_media(db: Session, media_id: int):
     return db.query(DBMedia).filter(DBMedia.id == media_id).first()
 
 
-def get_media_by_path(db: Session, media_path: str):
-    return db.query(DBMedia).filter(DBMedia.media_path == media_path).first()
+def get_media_by_mxf_path(db: Session, mxf_path: str):
+    return db.query(DBMedia).filter(DBMedia.mxf_path == mxf_path).first()
+
+
+def get_media_by_mp4_path(db: Session, mp4_path: str):
+    return db.query(DBMedia).filter(DBMedia.mp4_path == mp4_path).first()
 
 
 def get_medias(db: Session, skip: int = 0, limit: int = 100):
@@ -20,7 +24,12 @@ def create_media(db: Session, media: MediaCreate, user_id: int):
     db_media = DBMedia(
         source=media.source,
         media_type=media.media_type,
-        media_path=media.media_path,
+
+        mxf_path=media.mxf_path,
+        mp4_path=media.mp4_path,
+
+        recorded_at=media.recorded_at,
+
         user_id=user_id,
     )
 

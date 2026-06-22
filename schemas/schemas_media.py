@@ -2,14 +2,18 @@ from datetime import datetime
 from pydantic import BaseModel
 from typing import Optional
 
-from db.models import MediaType, MediaSource
+from db.enums import MediaType, MediaSource
 from schemas.schemas_user import UserRead
 
 
 class MediaBase(BaseModel):
     source: MediaSource
     media_type: MediaType
-    media_path: str
+
+    mxf_path: Optional[str] = None
+    mp4_path: Optional[str] = None
+
+    recorded_at: Optional[datetime] = None
 
 
 class MediaCreate(MediaBase):
@@ -19,7 +23,11 @@ class MediaCreate(MediaBase):
 class MediaUpdate(BaseModel):
     source: Optional[MediaSource] = None
     media_type: Optional[MediaType] = None
-    media_path: Optional[str] = None
+
+    mxf_path: Optional[str] = None
+    mp4_path: Optional[str] = None
+
+    recorded_at: Optional[datetime] = None
 
 
 class MediaRead(MediaBase):

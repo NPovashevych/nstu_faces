@@ -1,9 +1,9 @@
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Any
 
 from pydantic import BaseModel
 
-from db.models import FaceGender
+from db.enums import FaceGender, FaceCategory
 from schemas.schemas_embedding import EmbeddingRead
 from schemas.schemas_freeze import FreezeRead
 from schemas.schemas_person import PersonsRead
@@ -12,13 +12,20 @@ from schemas.schemas_iteration import IterationRead
 
 class FaceBase(BaseModel):
     bbox: list[float]
-    gender: FaceGender = FaceGender.unknown
+
+    category: FaceCategory = FaceCategory.uncertain
+    category_score: Optional[float] = None
+
     quality: Optional[float] = None
+
+    gender: FaceGender = FaceGender.unknown
     confidence: Optional[int] = None
+
+    analysis: Optional[dict[str, Any]] = None
 
     embedding_id: int
     freeze_id: int
-    person_id: int
+    person_id: Optional[int] = None
     iteration_id: int
 
 
@@ -28,9 +35,16 @@ class FaceCreate(FaceBase):
 
 class FaceUpdate(BaseModel):
     bbox: Optional[list[float]] = None
-    gender: Optional[FaceGender] = None
+
+    category: Optional[FaceCategory] = None
+    category_score: Optional[float] = None
+
     quality: Optional[float] = None
+
+    gender: Optional[FaceGender] = None
     confidence: Optional[int] = None
+
+    analysis: Optional[dict[str, Any]] = None
 
     embedding_id: Optional[int] = None
     freeze_id: Optional[int] = None
@@ -48,5 +62,5 @@ class FaceRead(FaceBase):
 class FaceReadFull(FaceRead):
     embedding: EmbeddingRead
     freeze: FreezeRead
-    person: PersonsRead
+    person: Optional[PersonsRead] = None
     iteration: IterationRead

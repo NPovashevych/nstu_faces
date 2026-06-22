@@ -6,7 +6,7 @@ from PIL import Image
 import cv2
 from sqlalchemy.orm import Session
 
-from services.config import FREEZE_FOLDER, MP4_FOLDER
+from services.config import MP4_LIGHT_FOLDER, FREEZE_FOLDER_FROM_MXF
 from db.enums import EmbeddingType
 from db.models import DBPerson, DBEmbedding
 
@@ -24,12 +24,12 @@ def similarity_percent_from_distance(distance: float):
 
 
 def make_image_url(freeze_path: str):
-    relative_path = Path(freeze_path).relative_to(Path(FREEZE_FOLDER))
+    relative_path = Path(freeze_path).relative_to(Path(FREEZE_FOLDER_FROM_MXF))
     return f"/freezes/{relative_path.as_posix()}"
 
 
 def make_media_url(media_path: str):
-    relative_path = Path(media_path).relative_to(Path(MP4_FOLDER))
+    relative_path = Path(media_path).relative_to(Path(MP4_LIGHT_FOLDER))
     return f"/media-files/{relative_path.as_posix()}"
 
 
@@ -57,9 +57,12 @@ def load_reference_embeddings(db: Session):
         refs.append({
             "person_id": row.person_id,
             "person_name": row.person.name,
+            "person_code": row.person.code,
+            "person_status": row.person.status.value if row.person.status else None,
             "q_code": row.person.q_code,
             "link": row.person.link,
             "vector": normalize(np.array(row.vector, dtype=np.float32)),
         })
 
     return refs
+

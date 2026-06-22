@@ -4,11 +4,13 @@ import cv2
 MIN_FACE_SIZE = 40        # мінімальний розмір (px)
 GOOD_FACE_SIZE = 160      # розмір, який вважаємо ідеальним
 BLUR_LOW = 50             # дуже розмите
-BLUR_HIGH = 200           # чітке
-MIN_ASPECT = 0.6   # занадто вузьке (профіль / обрізане)
-MAX_ASPECT = 1.6   # занадто широке
+BLUR_HIGH = 200                         # чітке
+MIN_ASPECT = 0.6                        # занадто вузьке (профіль / обрізане)
+MAX_ASPECT = 1.6                        # занадто широке
+VISIBLE_FACE_THRESHOLD = 0.70           # фрагмент менше 70 %
 
 QUALITY_THRESHOLD = 0.55  # поріг прийняття
+
 
 
 def crop_face(img, bbox):
@@ -71,6 +73,49 @@ def norm_aspect(bbox):
     return 1.0 - abs(ratio - 1.0)
 
 
+def visible_bbox_ratio(img, bbox):
+    h, w = img.shape[:2]
+
+    x1, y1, x2, y2 = bbox.astype(float)
+
+    full_area = max(0, x2 - x1) * max(0, y2 - y1)
+    if full_area <= 0:
+        return 0.0
+
+    vx1 = max(0, x1)
+    vy1 = max(0, y1)
+    vx2 = min(w, x2)
+    vy2 = min(h, y2)
+
+    visible_area = max(0, vx2 - vx1) * max(0, vy2 - vy1)
+
+    return visible_area / full_area
+
+
+def landmarks_are_usable(face):
+    kps = getattr(face, "kps", None)
+
+    if kps is None or len(kps) < 5:
+        return False
+
+    left_eye, right_eye, nose, left_mouth, right_mouth = kps
+
+    eye_dist = abs(right_eye[0] - left_eye[0])
+    mouth_dist = abs(right_mouth[0] - left_mouth[0])
+
+    if eye_dist < 8:
+        return False
+
+    if mouth_dist < 6:
+        return False
+
+    # ніс має бути приблизно між очима
+    if nose[1] <= min(left_eye[1], right_eye[1]):
+        return False
+
+    return True
+
+
 def is_good_face(img, face):
     bbox = face.bbox.astype(int)
 
@@ -93,7 +138,3 @@ def is_good_face(img, face):
 
 
     return float(score)
-
-
-def pass_quality(img, face):
-    return is_good_face(img, face) >= QUALITY_THRESHOLD

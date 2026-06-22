@@ -1,26 +1,50 @@
 from pathlib import Path
+import json
+import threading
+from datetime import datetime
+
 import cv2
 import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from routers.commons import cosine_distance, normalize, make_image_url, image_to_base64, load_reference_embeddings, make_media_url
+from routers.commons import (
+    cosine_distance,
+    normalize,
+    make_image_url,
+    image_to_base64,
+    load_reference_embeddings,
+    make_media_url,
+)
 from db.session import get_db
-from db.models import DBPerson, DBFace, DBFreeze, DBMedia
-
-from services.face_quality import is_good_face
+from db.models import DBPerson, DBFace, DBFreeze, DBMedia, DBEmbedding
+from db.enums import PersonStatus, EmbeddingType
+from old_versions.face_quality import is_good_face
 
 
 router = APIRouter(prefix="/search", tags=["search"])
 
 
-DIST_TOLERANCE = 0.45
+DIST_TOLERANCE = 0.42
 STEP_TOLERANCE = 0.03
 MAX_ACCEPTABLE_DIST = 0.55
+UNKNOWN_CLUSTER_TOLERANCE = 0.60
 MIN_PHOTO_FACE_QUALITY = 0.00
 
+CLUSTER_HINTS_PATH = Path("data/cluster_hints.json")
+_hints_lock = threading.Lock()
 
 _model = None
+
+
+class ClusterHintCreate(BaseModel):
+    cluster_person_id: int
+    cluster_id: int | None = None
+    cluster_tag: str | None = None
+    suggested_name: str
+    comment: str | None = None
+    source: str | None = "lovable"
 
 
 def get_model():
@@ -34,7 +58,6 @@ def get_model():
             providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
         )
         _model.prepare(ctx_id=0, det_size=(640, 640))
-        #_model.prepare(ctx_id=0)
 
     return _model
 
@@ -59,7 +82,79 @@ def make_bbox_draw(bbox):
     }
 
 
-def find_best_match(embedding, reference_embeddings):
+
+def load_cluster_hints() -> dict:
+    if not CLUSTER_HINTS_PATH.exists():
+        return {}
+
+    with open(CLUSTER_HINTS_PATH, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_cluster_hint(payload: ClusterHintCreate):
+    CLUSTER_HINTS_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+    with _hints_lock:
+        data = load_cluster_hints()
+        key = str(payload.cluster_person_id)
+
+        item = {
+            "cluster_person_id": payload.cluster_person_id,
+            "cluster_id": payload.cluster_id,
+            "cluster_tag": payload.cluster_tag,
+            "suggested_name": payload.suggested_name.strip(),
+            "comment": payload.comment,
+            "source": payload.source,
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+            "status": "pending_review",
+        }
+
+        if key not in data:
+            data[key] = []
+
+        data[key].append(item)
+
+        with open(CLUSTER_HINTS_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+
+        return item
+
+
+def get_latest_cluster_hint(cluster_person_id: int):
+    data = load_cluster_hints()
+    items = data.get(str(cluster_person_id), [])
+
+    if not items:
+        return None
+
+    return items[-1]
+
+
+def load_unknown_cluster_embeddings(db: Session):
+    rows = (
+        db.query(DBEmbedding, DBPerson)
+        .join(DBPerson, DBEmbedding.person_id == DBPerson.id)
+        .filter(DBPerson.status == PersonStatus.unknown)
+        .filter(DBEmbedding.embedding_type == EmbeddingType.detected_face)
+        .all()
+    )
+
+    result = []
+
+    for emb, person in rows:
+        result.append({
+            "person_id": person.id,
+            "person_name": person.name,
+            "cluster_id": person.cluster_id,
+            "cluster_tag": person.cluster_tag,
+            "cluster_distance": person.cluster_distance,
+            "vector": normalize(np.array(emb.vector, dtype=np.float32)),
+        })
+
+    return result
+
+
+def find_best_known_match(embedding, reference_embeddings):
     best = None
     best_dist = 1.0
 
@@ -70,26 +165,75 @@ def find_best_match(embedding, reference_embeddings):
             best_dist = dist
             best = ref
 
-    if best is None:
+    if best is None or best_dist > MAX_ACCEPTABLE_DIST:
         return None
 
-    if best_dist > MAX_ACCEPTABLE_DIST:
-        return {
-            "recognized": False,
-            "distance": round(best_dist, 4),
-            "similarity_percent": round((1 - best_dist*0.5) * 100, 2),
-        }
-
     return {
+        "type": "known",
         "recognized": True,
+        "is_unknown_cluster": False,
         "person_id": best["person_id"],
         "name": best["person_name"],
+        "display_name": best["person_name"],
         "q_code": best["q_code"],
         "link": best["link"],
         "distance": round(best_dist, 4),
-        "similarity_percent": round((1 - best_dist*0.5) * 100, 2),
+        "similarity_percent": round((1 - best_dist * 0.5) * 100, 2),
         "confidence": get_confidence(best_dist),
     }
+
+
+def find_best_unknown_cluster(embedding, unknown_embeddings):
+    best = None
+    best_dist = 1.0
+
+    for ref in unknown_embeddings:
+        dist = cosine_distance(embedding, ref["vector"])
+
+        if dist < best_dist:
+            best_dist = dist
+            best = ref
+
+    if best is None or best_dist > UNKNOWN_CLUSTER_TOLERANCE:
+        return {
+            "type": "unknown",
+            "recognized": False,
+            "is_unknown_cluster": False,
+            "display_name": "Невідоме обличчя",
+            "distance": round(best_dist, 4) if best else None,
+        }
+
+    hint = get_latest_cluster_hint(best["person_id"])
+
+    display_name = (
+        hint["suggested_name"]
+        if hint and hint.get("suggested_name")
+        else best["cluster_tag"] or best["person_name"]
+    )
+
+    return {
+        "type": "unknown_cluster",
+        "recognized": False,
+        "is_unknown_cluster": True,
+        "person_id": best["person_id"],
+        "name": best["person_name"],
+        "display_name": display_name,
+        "cluster_id": best["cluster_id"],
+        "cluster_tag": best["cluster_tag"],
+        "distance": round(best_dist, 4),
+        "similarity_percent": round((1 - best_dist * 0.5) * 100, 2),
+        "suggested_name": hint["suggested_name"] if hint else None,
+        "hint_status": hint["status"] if hint else None,
+    }
+
+
+def find_best_match(embedding, reference_embeddings, unknown_embeddings):
+    known_match = find_best_known_match(embedding, reference_embeddings)
+
+    if known_match:
+        return known_match
+
+    return find_best_unknown_cluster(embedding, unknown_embeddings)
 
 
 def get_media_description(media: DBMedia):
@@ -151,8 +295,27 @@ def get_person_media_result(db: Session, person: DBPerson):
         "name": person.name,
         "q_code": person.q_code,
         "link": person.link,
+        "status": person.status.value if person.status else None,
+        "cluster_id": person.cluster_id,
+        "cluster_tag": person.cluster_tag,
         "medias": list(medias_map.values()),
     }
+
+
+def get_cluster_result_if_exists(db: Session, match: dict | None):
+    if not match or not match.get("is_unknown_cluster"):
+        return None
+
+    person_id = match.get("person_id")
+    if not person_id:
+        return None
+
+    cluster_person = db.query(DBPerson).filter(DBPerson.id == person_id).first()
+
+    if not cluster_person:
+        return None
+
+    return get_person_media_result(db, cluster_person)
 
 
 @router.get("/person")
@@ -189,6 +352,25 @@ def search_person_by_id(person_id: int, db: Session = Depends(get_db)):
     return get_person_media_result(db, person)
 
 
+@router.post("/cluster-hint")
+def create_cluster_hint(payload: ClusterHintCreate):
+    if not payload.suggested_name.strip():
+        raise HTTPException(status_code=400, detail="suggested_name is empty")
+
+    item = save_cluster_hint(payload)
+
+    return {
+        "status": "ok",
+        "message": "Підказку збережено для перевірки",
+        "hint": item,
+    }
+
+
+@router.get("/cluster-hints")
+def list_cluster_hints():
+    return load_cluster_hints()
+
+
 @router.post("/photo")
 async def search_by_photo(
     file: UploadFile = File(...),
@@ -206,6 +388,7 @@ async def search_by_photo(
 
     model = get_model()
     reference_embeddings = load_reference_embeddings(db)
+    unknown_embeddings = load_unknown_cluster_embeddings(db)
 
     faces = model.get(img)
     faces = sorted(faces, key=lambda f: f.bbox[0])
@@ -214,13 +397,19 @@ async def search_by_photo(
 
     for idx, face in enumerate(faces, start=1):
         quality = is_good_face(img, face)
-
         is_low_quality = quality < MIN_PHOTO_FACE_QUALITY
 
         bbox = face.bbox.astype(float).tolist()
         emb = normalize(face.embedding)
 
-        match = find_best_match(emb, reference_embeddings)
+        match = find_best_match(
+            embedding=emb,
+            reference_embeddings=reference_embeddings,
+            unknown_embeddings=unknown_embeddings,
+        )
+
+        if match and match.get("is_unknown_cluster"):
+            match["cluster_result"] = get_cluster_result_if_exists(db, match)
 
         detected_faces.append({
             "face_index": idx,
@@ -246,11 +435,18 @@ async def search_by_photo(
         if f["match"] and f["match"].get("recognized")
     ]
 
+    cluster_faces = [
+        f for f in detected_faces
+        if f["match"] and f["match"].get("is_unknown_cluster")
+    ]
+
     if len(detected_faces) == 1:
         one_face = detected_faces[0]
         match = one_face["match"]
 
         if not match or not match.get("recognized"):
+            cluster_result = match.get("cluster_result") if match else None
+
             return {
                 "mode": "single_unknown",
                 "message": "Обличчя знайдено, але персонy не розпізнано",
@@ -258,6 +454,10 @@ async def search_by_photo(
                 "image_height": h,
                 "uploaded_image": image_to_base64(img),
                 "faces": detected_faces,
+                "cluster_result": cluster_result,
+
+                # сумісність зі старим Lovable, який очікує response.result.medias
+                "result": cluster_result,
             }
 
         person = db.query(DBPerson).filter(DBPerson.id == match["person_id"]).first()
@@ -271,6 +471,12 @@ async def search_by_photo(
             "result": get_person_media_result(db, person),
         }
 
+    cluster_results = [
+        f["match"]["cluster_result"]
+        for f in cluster_faces
+        if f.get("match") and f["match"].get("cluster_result")
+    ]
+
     return {
         "mode": "multiple_faces",
         "message": "На фото знайдено кілька облич. Оберіть потрібну людину.",
@@ -279,4 +485,6 @@ async def search_by_photo(
         "uploaded_image": image_to_base64(img),
         "faces": detected_faces,
         "recognized_count": len(recognized_faces),
+        "unknown_cluster_count": len(cluster_faces),
+        "cluster_results": cluster_results,
     }

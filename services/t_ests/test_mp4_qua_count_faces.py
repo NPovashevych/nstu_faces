@@ -4,7 +4,7 @@ import cv2
 import pandas as pd
 from insightface.app import FaceAnalysis
 
-from services.face_quality import is_good_face
+from old_versions.face_quality import is_good_face
 from services.config import FOR_TEST
 
 REPORT_PATH = FOR_TEST / "benchmark_results.xlsx"

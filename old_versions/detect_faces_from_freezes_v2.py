@@ -5,6 +5,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from PIL import Image
 from insightface.app import FaceAnalysis
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -23,29 +24,34 @@ from schemas.schemas_face import FaceCreate
 from schemas.schemas_iteration import IterationCreate, IterationUpdate
 from schemas.schemas_person import PersonsCreate
 
-from services.face_quality import pass_quality, is_good_face
+from routers.commons import normalize, cosine_distance
+from old_versions.face_quality_v2 import is_good_face
+from old_versions.clip_face_filter import get_clip, check_face_suspicion
 
 
-Path("logs").mkdir(exist_ok=True)
+Path("../services/logs").mkdir(exist_ok=True)
 
 logging.basicConfig(
     level=logging.INFO,
     format="[%(levelname)8s]: %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler("logs/detect_faces_from_freezes.log", encoding="utf-8"),
+        logging.FileHandler("../services/logs/detect_faces_from_freezes_v2.log", encoding="utf-8"),
     ],
 )
 
 
 DIST_TOLERANCE = 0.45
 STEP_TOLERANCE = 0.03
-UNKNOWN_TOLERANCE = 0.40
+
+UNKNOWN_TOLERANCE = 0.50
+SUSPICIOUS_TOLERANCE = 0.50
 
 USER_ID = 1
+_INSIGHTFACE_CACHE = None
 
 
-def load_model():
+def load_insightface():
     app = FaceAnalysis(
         name="buffalo_l",
         providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
@@ -54,12 +60,13 @@ def load_model():
     return app
 
 
-def normalize(v):
-    return v / (np.linalg.norm(v) + 1e-8)
+def get_insightface():
+    global _INSIGHTFACE_CACHE
 
+    if _INSIGHTFACE_CACHE is None:
+        _INSIGHTFACE_CACHE = load_insightface()
 
-def cosine_distance(a, b):
-    return 1 - float(np.dot(a, b))
+    return _INSIGHTFACE_CACHE
 
 
 def get_confidence(dist: float) -> int:
@@ -121,25 +128,31 @@ def find_best_known_match(embedding, reference_embeddings):
     return best, best_dist
 
 
-def get_next_unknown_cluster_number(db: Session) -> int:
+def get_next_cluster_number(db: Session, status: PersonStatus) -> int:
     max_cluster_id = (
         db.query(func.max(DBPerson.cluster_id))
-        .filter(DBPerson.status == PersonStatus.unknown)
+        .filter(DBPerson.status == status)
         .scalar()
     )
 
     return (max_cluster_id or 0) + 1
 
 
-def create_unknown_cluster_person(db: Session):
-    cluster_id = get_next_unknown_cluster_number(db)
-    cluster_tag = f"unknown_cluster_{cluster_id:06d}"
+def create_cluster_person(db: Session, status: PersonStatus):
+    cluster_id = get_next_cluster_number(db, status)
+
+    if status == PersonStatus.suspicious:
+        cluster_prefix = "suspicious_cluster"
+    else:
+        cluster_prefix = "unknown_cluster"
+
+    cluster_tag = f"{cluster_prefix}_{cluster_id:06d}"
 
     person_create = PersonsCreate(
         name=cluster_tag,
         q_code=None,
         link=None,
-        status=PersonStatus.unknown,
+        status=status,
     )
 
     db_person = create_person(db, person_create, code=cluster_tag)
@@ -154,42 +167,52 @@ def create_unknown_cluster_person(db: Session):
     return db_person
 
 
-def load_unknown_cluster_embeddings(db: Session):
+def load_cluster_embeddings(db: Session, status: PersonStatus):
     rows = (
         db.query(DBEmbedding)
         .join(DBPerson, DBEmbedding.person_id == DBPerson.id)
         .filter(DBEmbedding.embedding_type == EmbeddingType.detected_face)
-        .filter(DBPerson.status == PersonStatus.unknown)
+        .filter(DBPerson.status == status)
         .all()
     )
 
-    unknowns = []
+    items = []
 
     for row in rows:
-        unknowns.append(
+        items.append(
             {
                 "person_id": row.person_id,
                 "vector": normalize(np.array(row.vector, dtype=np.float32)),
             }
         )
 
-    return unknowns
+    return items
 
 
-def find_or_create_unknown_person(db: Session, embedding):
-    unknown_embeddings = load_unknown_cluster_embeddings(db)
+def find_or_create_cluster_person(
+    db: Session,
+    embedding,
+    status: PersonStatus,
+):
+    tolerance = (
+        SUSPICIOUS_TOLERANCE
+        if status == PersonStatus.suspicious
+        else UNKNOWN_TOLERANCE
+    )
+
+    cluster_embeddings = load_cluster_embeddings(db, status)
 
     best_person_id = None
     best_dist = 1.0
 
-    for item in unknown_embeddings:
+    for item in cluster_embeddings:
         dist = cosine_distance(embedding, item["vector"])
 
         if dist < best_dist:
             best_dist = dist
             best_person_id = item["person_id"]
 
-    if best_person_id is not None and best_dist <= UNKNOWN_TOLERANCE:
+    if best_person_id is not None and best_dist <= tolerance:
         db_person = db.query(DBPerson).filter(DBPerson.id == best_person_id).first()
 
         if db_person:
@@ -200,10 +223,18 @@ def find_or_create_unknown_person(db: Session, embedding):
 
         return db_person, best_dist
 
-    return create_unknown_cluster_person(db), None
+    return create_cluster_person(db, status), None
 
 
-def create_detected_embedding(db: Session, person_id: int, embedding, freeze: DBFreeze, face, distance):
+def create_detected_embedding(
+    db: Session,
+    person_id: int,
+    embedding,
+    freeze: DBFreeze,
+    face,
+    distance,
+    clip_result,
+):
     bbox = face.bbox.astype(float).tolist()
 
     embedding_create = EmbeddingCreate(
@@ -213,7 +244,11 @@ def create_detected_embedding(db: Session, person_id: int, embedding, freeze: DB
             "freeze_path": freeze.freeze_path,
             "bbox": bbox,
             "distance": distance,
-            "created_by": "detect_faces_from_freezes.py",
+            "clip_category": clip_result["category"],
+            "clip_score": clip_result["score"],
+            "is_suspicious": clip_result["is_suspicious"],
+            "suspicion_reason": clip_result["reason"],
+            "created_by": "detect_faces_from_freezes_v2.py",
         },
         vector=embedding.tolist(),
         person_id=person_id,
@@ -224,7 +259,11 @@ def create_detected_embedding(db: Session, person_id: int, embedding, freeze: DB
 
 def process_freeze(
     db: Session,
-    model,
+    face_model,
+    clip_model,
+    clip_preprocess,
+    clip_text_features,
+    clip_prompt_categories,
     freeze: DBFreeze,
     iteration_id: int,
     reference_embeddings,
@@ -241,33 +280,57 @@ def process_freeze(
         logging.warning(f"Cannot read freeze image: {freeze.freeze_path}")
         return 0
 
-    faces = model.get(img)
+    pil_image = Image.open(freeze.freeze_path).convert("RGB")
+
+    faces = face_model.get(img)
 
     created = 0
 
     for face in faces:
-        quality = is_good_face(img, face)
-
-        if quality < 0.15:
+        if not is_good_face(img, face):
             logging.info(
-                f"Skip ghost face freeze_id={freeze.id}, quality={quality:.2f}, bbox={face.bbox.astype(int).tolist()}"
+                f"Skip low quality face freeze_id={freeze.id}, "
+                f"bbox={face.bbox.astype(int).tolist()}"
             )
             continue
+
+        clip_result = check_face_suspicion(
+            image=pil_image,
+            bbox=face.bbox.astype(float).tolist(),
+            model=clip_model,
+            preprocess=clip_preprocess,
+            text_features=clip_text_features,
+            prompt_categories=clip_prompt_categories,
+        )
 
         emb = normalize(face.embedding)
 
         best_ref, best_dist = find_best_known_match(emb, reference_embeddings)
         confidence = get_confidence(best_dist)
 
-        if best_ref is not None and confidence != -1:
+        if best_ref is not None and confidence != -1 and not clip_result["is_suspicious"]:
             person_id = best_ref["person_id"]
             distance_for_source = round(best_dist, 4)
             face_confidence = confidence
+            person_status_for_log = "known"
+
         else:
-            unknown_person, unknown_dist = find_or_create_unknown_person(db, emb)
-            person_id = unknown_person.id
-            distance_for_source = round(unknown_dist, 4) if unknown_dist is not None else None
+            cluster_status = (
+                PersonStatus.suspicious
+                if clip_result["is_suspicious"]
+                else PersonStatus.unknown
+            )
+
+            cluster_person, cluster_dist = find_or_create_cluster_person(
+                db=db,
+                embedding=emb,
+                status=cluster_status,
+            )
+
+            person_id = cluster_person.id
+            distance_for_source = round(cluster_dist, 4) if cluster_dist is not None else None
             face_confidence = None
+            person_status_for_log = cluster_status.value
 
         detected_embedding = create_detected_embedding(
             db=db,
@@ -276,13 +339,21 @@ def process_freeze(
             freeze=freeze,
             face=face,
             distance=distance_for_source,
+            clip_result=clip_result,
         )
 
         face_create = FaceCreate(
             bbox=face.bbox.astype(float).tolist(),
             gender=map_gender(face),
-            quality=round(quality, 4),
+            quality=1.0,
             confidence=face_confidence,
+
+            is_suspicious=clip_result["is_suspicious"],
+            suspicion_reason=clip_result["reason"],
+            clip_category=clip_result["category"],
+            clip_score=clip_result["score"],
+            clip_scores=clip_result["all_scores"],
+
             embedding_id=detected_embedding.id,
             freeze_id=freeze.id,
             person_id=person_id,
@@ -292,10 +363,26 @@ def process_freeze(
         create_face(db, face_create)
         created += 1
 
+        logging.info(
+            f"Created face freeze_id={freeze.id}, person_id={person_id}, "
+            f"status={person_status_for_log}, "
+            f"clip={clip_result['category']}:{clip_result['score']}, "
+            f"suspicious={clip_result['is_suspicious']}"
+        )
+
     return created
 
 
-def process_media(db: Session, model, media: DBMedia, reference_embeddings):
+def process_media(
+    db: Session,
+    face_model,
+    clip_model,
+    clip_preprocess,
+    clip_text_features,
+    clip_prompt_categories,
+    media: DBMedia,
+    reference_embeddings,
+):
     freezes = (
         db.query(DBFreeze)
         .filter(DBFreeze.media_id == media.id)
@@ -312,10 +399,12 @@ def process_media(db: Session, model, media: DBMedia, reference_embeddings):
         IterationCreate(
             status=IterationStatus.processing,
             params={
-                "service": "detect_faces_from_freezes.py",
-                "quality_filter": True,
+                "service": "detect_faces_from_freezes_v2.py",
+                "quality_filter": "face_quality_v2",
+                "clip_filter": True,
                 "dist_tolerance": DIST_TOLERANCE,
                 "unknown_tolerance": UNKNOWN_TOLERANCE,
+                "suspicious_tolerance": SUSPICIOUS_TOLERANCE,
             },
             error_message=None,
             user_id=USER_ID,
@@ -329,7 +418,11 @@ def process_media(db: Session, model, media: DBMedia, reference_embeddings):
         for freeze in freezes:
             total_created += process_freeze(
                 db=db,
-                model=model,
+                face_model=face_model,
+                clip_model=clip_model,
+                clip_preprocess=clip_preprocess,
+                clip_text_features=clip_text_features,
+                clip_prompt_categories=clip_prompt_categories,
                 freeze=freeze,
                 iteration_id=iteration.id,
                 reference_embeddings=reference_embeddings,
@@ -364,7 +457,12 @@ def process_all_media():
     db = SessionLocal()
 
     try:
-        model = load_model()
+        logging.info("Loading InsightFace...")
+        face_model = get_insightface()
+
+        logging.info("Loading CLIP...")
+        clip_model, clip_preprocess, clip_text_features, clip_prompt_categories = get_clip()
+
         reference_embeddings = load_reference_embeddings(db)
 
         medias = db.query(DBMedia).order_by(DBMedia.id).all()
@@ -372,7 +470,16 @@ def process_all_media():
         total_faces = 0
 
         for media in medias:
-            total_faces += process_media(db, model, media, reference_embeddings)
+            total_faces += process_media(
+                db=db,
+                face_model=face_model,
+                clip_model=clip_model,
+                clip_preprocess=clip_preprocess,
+                clip_text_features=clip_text_features,
+                clip_prompt_categories=clip_prompt_categories,
+                media=media,
+                reference_embeddings=reference_embeddings,
+            )
 
         logging.info("--------------------------------")
         logging.info(f"Total faces created: {total_faces}")

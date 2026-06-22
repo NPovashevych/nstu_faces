@@ -8,7 +8,7 @@ from crud.crud_face import (
     get_faces,
     get_faces_by_freeze,
     get_faces_by_person,
-    get_faces_by_iteration,
+#    get_faces_by_iteration,
     create_face,
     update_face,
     delete_face,
@@ -54,12 +54,12 @@ def read_faces_by_person(person_id: int, db: Session = Depends(get_db)):
     return get_faces_by_person(db, person_id)
 
 
-@router.get("/iteration/{iteration_id}", response_model=List[FaceRead])
-def read_faces_by_iteration(iteration_id: int, db: Session = Depends(get_db)):
-    if get_iteration(db, iteration_id) is None:
-        raise HTTPException(status_code=404, detail="Iteration not found")
-
-    return get_faces_by_iteration(db, iteration_id)
+#@router.get("/iteration/{iteration_id}", response_model=List[FaceRead])
+#def read_faces_by_iteration(iteration_id: int, db: Session = Depends(get_db)):
+#    if get_iteration(db, iteration_id) is None:
+#        raise HTTPException(status_code=404, detail="Iteration not found")
+#
+#    return get_faces_by_iteration(db, iteration_id)
 
 
 @router.post("/", response_model=FaceRead)
@@ -70,7 +70,7 @@ def create_new_face(face: FaceCreate, db: Session = Depends(get_db)):
     if get_freeze(db, face.freeze_id) is None:
         raise HTTPException(status_code=404, detail="Freeze not found")
 
-    if get_person(db, face.person_id) is None:
+    if face.person_id is not None and get_person(db, face.person_id) is None:
         raise HTTPException(status_code=404, detail="Person not found")
 
     if get_iteration(db, face.iteration_id) is None:

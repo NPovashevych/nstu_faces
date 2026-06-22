@@ -50,11 +50,12 @@ logging.basicConfig(
 
 MIN_W = 15
 MIN_H = 15
-BLUR = 14.9
+BLUR = 12.9
 DUPLICATE_SIMILARITY = 0.98
 
-MAX_DIST_FROM_MEAN = 0.45
-MAX_PAIRWISE_DIST = 0.70
+MAX_DIST_FROM_MEAN = 0.55
+MAX_PAIRWISE_DIST = 0.98
+_INSIGHTFACE_CACHE = None
 
 
 def load_people_db(path: Path) -> dict:
@@ -66,13 +67,22 @@ def load_people_db(path: Path) -> dict:
         return json.load(f)
 
 
-def load_model():
-    model = FaceAnalysis(
+def load_insightface():
+    app = FaceAnalysis(
         name="buffalo_l",
         providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
     )
-    model.prepare(ctx_id=0)
-    return model
+    app.prepare(ctx_id=0, det_size=(640, 640))
+    return app
+
+
+def get_insightface():
+    global _INSIGHTFACE_CACHE
+
+    if _INSIGHTFACE_CACHE is None:
+        _INSIGHTFACE_CACHE = load_insightface()
+
+    return _INSIGHTFACE_CACHE
 
 
 def parse_name_qcode(folder_name: str):
@@ -129,12 +139,17 @@ def get_person_link(name: str, q_code: str | None, people_db: dict):
     return get_google_search_link(name)
 
 
+# def get_person_name_from_db_or_folder(folder_name: str, q_code: str | None, people_db: dict):
+#     parsed_name, _ = parse_name_qcode(folder_name)
+#
+#     if q_code and q_code in people_db:
+#         return people_db[q_code].get("name") or parsed_name
+#
+#     return parsed_name
+
+
 def get_person_name_from_db_or_folder(folder_name: str, q_code: str | None, people_db: dict):
     parsed_name, _ = parse_name_qcode(folder_name)
-
-    if q_code and q_code in people_db:
-        return people_db[q_code].get("name") or parsed_name
-
     return parsed_name
 
 
@@ -390,7 +405,7 @@ def process_person_folder(db: Session, model, person_folder: Path, people_db: di
 def build_face_database_from_folder(base_folder: Path):
     people_db = load_people_db(Path(NEW_WIKI_PATH))
 
-    model = load_model()
+    model = get_insightface()
     db = SessionLocal()
 
     total_added = 0

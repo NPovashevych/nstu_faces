@@ -22,8 +22,13 @@ logging.basicConfig(
 )
 
 
+# def is_unknown_name(name: str) -> bool:
+#     return name.strip().lower().startswith("unknown")
+
+
 def is_unknown_name(name: str) -> bool:
-    return name.strip().lower().startswith("unknown")
+    name = name.strip().lower()
+    return name.startswith("unknown_cluster_") and "_resolved_to_" not in name
 
 
 def load_people_db(path: Path) -> dict:

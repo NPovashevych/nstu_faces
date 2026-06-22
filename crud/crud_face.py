@@ -4,66 +4,72 @@ from db.models import DBFace
 from schemas.schemas_face import FaceCreate, FaceUpdate
 
 
-def get_face(db: Session, face_id: int):
-    return db.query(DBFace).filter(DBFace.id == face_id).first()
-
-
-def get_faces(db: Session, skip: int = 0, limit: int = 100):
-    return db.query(DBFace).offset(skip).limit(limit).all()
-
-
-def get_faces_by_freeze(db: Session, freeze_id: int):
-    return db.query(DBFace).filter(DBFace.freeze_id == freeze_id).all()
-
-
-def get_faces_by_person(db: Session, person_id: int):
-    return db.query(DBFace).filter(DBFace.person_id == person_id).all()
-
-
-def get_faces_by_iteration(db: Session, iteration_id: int):
-    return db.query(DBFace).filter(DBFace.iteration_id == iteration_id).all()
-
-
 def create_face(db: Session, face: FaceCreate):
-    db_face = DBFace(
-        bbox=face.bbox,
-        gender=face.gender,
-        quality=face.quality,
-        confidence=face.confidence,
-        embedding_id=face.embedding_id,
-        freeze_id=face.freeze_id,
-        person_id=face.person_id,
-        iteration_id=face.iteration_id,
-    )
+    db_face = DBFace(**face.dict())
 
     db.add(db_face)
     db.commit()
     db.refresh(db_face)
+
     return db_face
 
 
-def update_face(db: Session, face_id: int, face: FaceUpdate):
+def get_face(db: Session, face_id: int):
+    return (
+        db.query(DBFace)
+        .filter(DBFace.id == face_id)
+        .first()
+    )
+
+
+def get_faces(db: Session):
+    return (
+        db.query(DBFace)
+        .order_by(DBFace.id)
+        .all()
+    )
+
+
+def get_faces_by_freeze(db: Session, freeze_id: int):
+    return (
+        db.query(DBFace)
+        .filter(DBFace.freeze_id == freeze_id)
+        .all()
+    )
+
+
+def get_faces_by_person(db: Session, person_id: int):
+    return (
+        db.query(DBFace)
+        .filter(DBFace.person_id == person_id)
+        .all()
+    )
+
+
+def update_face(db: Session, face_id: int, payload: FaceUpdate):
     db_face = get_face(db, face_id)
 
-    if db_face is None:
+    if not db_face:
         return None
 
-    update_data = face.model_dump(exclude_unset=True)
+    update_data = payload.dict(exclude_unset=True)
 
-    for field, value in update_data.items():
-        setattr(db_face, field, value)
+    for key, value in update_data.items():
+        setattr(db_face, key, value)
 
     db.commit()
     db.refresh(db_face)
+
     return db_face
 
 
 def delete_face(db: Session, face_id: int):
     db_face = get_face(db, face_id)
 
-    if db_face is None:
-        return None
+    if not db_face:
+        return False
 
     db.delete(db_face)
     db.commit()
-    return db_face
+
+    return True

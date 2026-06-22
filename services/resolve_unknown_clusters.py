@@ -26,7 +26,7 @@ logging.basicConfig(
 
 
 AUTO_THRESHOLD = 0.43
-REVIEW_THRESHOLD = 0.46
+REVIEW_THRESHOLD = 0.60
 
 
 def get_known_person(db: Session, person_id: int | None, name: str | None):

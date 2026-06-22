@@ -20,16 +20,16 @@ from routers.commons import (
 from db.session import get_db
 from db.models import DBPerson, DBFace, DBFreeze, DBMedia, DBEmbedding
 from db.enums import PersonStatus, EmbeddingType
-from services.face_quality import is_good_face
+from old_versions.face_quality import is_good_face
 
 
 router = APIRouter(prefix="/search", tags=["search"])
 
 
-DIST_TOLERANCE = 0.45
+DIST_TOLERANCE = 0.42
 STEP_TOLERANCE = 0.03
 MAX_ACCEPTABLE_DIST = 0.55
-UNKNOWN_CLUSTER_TOLERANCE = 0.60
+CLUSTER_TOLERANCE = 0.60
 MIN_PHOTO_FACE_QUALITY = 0.00
 
 CLUSTER_HINTS_PATH = Path("data/cluster_hints.json")
@@ -73,6 +73,13 @@ def get_confidence(dist: float):
     return None
 
 
+def apply_confidence_to_name(name: str, confidence: int | None) -> str:
+    if confidence is None or confidence <= 0:
+        return name
+
+    return f"{name} {'?' * min(confidence, 3)}"
+
+
 def make_bbox_draw(bbox):
     return {
         "x": bbox[0],
@@ -80,7 +87,6 @@ def make_bbox_draw(bbox):
         "w": bbox[2] - bbox[0],
         "h": bbox[3] - bbox[1],
     }
-
 
 
 def load_cluster_hints() -> dict:
@@ -130,11 +136,11 @@ def get_latest_cluster_hint(cluster_person_id: int):
     return items[-1]
 
 
-def load_unknown_cluster_embeddings(db: Session):
+def load_cluster_embeddings(db: Session):
     rows = (
         db.query(DBEmbedding, DBPerson)
         .join(DBPerson, DBEmbedding.person_id == DBPerson.id)
-        .filter(DBPerson.status == PersonStatus.unknown)
+        .filter(DBPerson.status.in_([PersonStatus.unknown, PersonStatus.suspicious]))
         .filter(DBEmbedding.embedding_type == EmbeddingType.detected_face)
         .all()
     )
@@ -145,6 +151,8 @@ def load_unknown_cluster_embeddings(db: Session):
         result.append({
             "person_id": person.id,
             "person_name": person.name,
+            "person_status": person.status.value if person.status else None,
+            "is_suspicious_cluster": person.status == PersonStatus.suspicious,
             "cluster_id": person.cluster_id,
             "cluster_tag": person.cluster_tag,
             "cluster_distance": person.cluster_distance,
@@ -168,37 +176,43 @@ def find_best_known_match(embedding, reference_embeddings):
     if best is None or best_dist > MAX_ACCEPTABLE_DIST:
         return None
 
+    confidence = get_confidence(best_dist)
+
     return {
         "type": "known",
         "recognized": True,
+        "is_cluster": False,
         "is_unknown_cluster": False,
+        "is_suspicious_cluster": False,
         "person_id": best["person_id"],
         "name": best["person_name"],
-        "display_name": best["person_name"],
+        "display_name": apply_confidence_to_name(best["person_name"], confidence),
         "q_code": best["q_code"],
         "link": best["link"],
         "distance": round(best_dist, 4),
         "similarity_percent": round((1 - best_dist * 0.5) * 100, 2),
-        "confidence": get_confidence(best_dist),
+        "confidence": confidence,
     }
 
 
-def find_best_unknown_cluster(embedding, unknown_embeddings):
+def find_best_cluster(embedding, cluster_embeddings):
     best = None
     best_dist = 1.0
 
-    for ref in unknown_embeddings:
+    for ref in cluster_embeddings:
         dist = cosine_distance(embedding, ref["vector"])
 
         if dist < best_dist:
             best_dist = dist
             best = ref
 
-    if best is None or best_dist > UNKNOWN_CLUSTER_TOLERANCE:
+    if best is None or best_dist > CLUSTER_TOLERANCE:
         return {
             "type": "unknown",
             "recognized": False,
+            "is_cluster": False,
             "is_unknown_cluster": False,
+            "is_suspicious_cluster": False,
             "display_name": "Невідоме обличчя",
             "distance": round(best_dist, 4) if best else None,
         }
@@ -211,13 +225,18 @@ def find_best_unknown_cluster(embedding, unknown_embeddings):
         else best["cluster_tag"] or best["person_name"]
     )
 
+    is_suspicious_cluster = best["is_suspicious_cluster"]
+
     return {
-        "type": "unknown_cluster",
+        "type": "suspicious_cluster" if is_suspicious_cluster else "unknown_cluster",
         "recognized": False,
-        "is_unknown_cluster": True,
+        "is_cluster": True,
+        "is_unknown_cluster": not is_suspicious_cluster,
+        "is_suspicious_cluster": is_suspicious_cluster,
         "person_id": best["person_id"],
         "name": best["person_name"],
         "display_name": display_name,
+        "person_status": best["person_status"],
         "cluster_id": best["cluster_id"],
         "cluster_tag": best["cluster_tag"],
         "distance": round(best_dist, 4),
@@ -227,13 +246,13 @@ def find_best_unknown_cluster(embedding, unknown_embeddings):
     }
 
 
-def find_best_match(embedding, reference_embeddings, unknown_embeddings):
+def find_best_match(embedding, reference_embeddings, cluster_embeddings):
     known_match = find_best_known_match(embedding, reference_embeddings)
 
     if known_match:
         return known_match
 
-    return find_best_unknown_cluster(embedding, unknown_embeddings)
+    return find_best_cluster(embedding, cluster_embeddings)
 
 
 def get_media_description(media: DBMedia):
@@ -288,6 +307,11 @@ def get_person_media_result(db: Session, person: DBPerson):
             "bbox_draw": make_bbox_draw(face.bbox),
             "quality": face.quality,
             "confidence": face.confidence,
+            "is_suspicious": face.is_suspicious,
+            "suspicion_reason": face.suspicion_reason,
+            "clip_category": face.clip_category,
+            "clip_score": face.clip_score,
+            "clip_scores": face.clip_scores,
         })
 
     return {
@@ -303,7 +327,7 @@ def get_person_media_result(db: Session, person: DBPerson):
 
 
 def get_cluster_result_if_exists(db: Session, match: dict | None):
-    if not match or not match.get("is_unknown_cluster"):
+    if not match or not match.get("is_cluster"):
         return None
 
     person_id = match.get("person_id")
@@ -388,7 +412,7 @@ async def search_by_photo(
 
     model = get_model()
     reference_embeddings = load_reference_embeddings(db)
-    unknown_embeddings = load_unknown_cluster_embeddings(db)
+    cluster_embeddings = load_cluster_embeddings(db)
 
     faces = model.get(img)
     faces = sorted(faces, key=lambda f: f.bbox[0])
@@ -405,10 +429,10 @@ async def search_by_photo(
         match = find_best_match(
             embedding=emb,
             reference_embeddings=reference_embeddings,
-            unknown_embeddings=unknown_embeddings,
+            cluster_embeddings=cluster_embeddings,
         )
 
-        if match and match.get("is_unknown_cluster"):
+        if match and match.get("is_cluster"):
             match["cluster_result"] = get_cluster_result_if_exists(db, match)
 
         detected_faces.append({
@@ -437,7 +461,12 @@ async def search_by_photo(
 
     cluster_faces = [
         f for f in detected_faces
-        if f["match"] and f["match"].get("is_unknown_cluster")
+        if f["match"] and f["match"].get("is_cluster")
+    ]
+
+    suspicious_cluster_faces = [
+        f for f in detected_faces
+        if f["match"] and f["match"].get("is_suspicious_cluster")
     ]
 
     if len(detected_faces) == 1:
@@ -455,8 +484,6 @@ async def search_by_photo(
                 "uploaded_image": image_to_base64(img),
                 "faces": detected_faces,
                 "cluster_result": cluster_result,
-
-                # сумісність зі старим Lovable, який очікує response.result.medias
                 "result": cluster_result,
             }
 
@@ -485,6 +512,11 @@ async def search_by_photo(
         "uploaded_image": image_to_base64(img),
         "faces": detected_faces,
         "recognized_count": len(recognized_faces),
-        "unknown_cluster_count": len(cluster_faces),
+        "cluster_count": len(cluster_faces),
+        "unknown_cluster_count": len([
+            f for f in cluster_faces
+            if f["match"] and f["match"].get("is_unknown_cluster")
+        ]),
+        "suspicious_cluster_count": len(suspicious_cluster_faces),
         "cluster_results": cluster_results,
     }
