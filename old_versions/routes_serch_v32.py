@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from routers.commons import (
+from routes.routers_classic import (
     cosine_distance,
     normalize,
     make_image_url,

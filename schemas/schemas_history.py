@@ -15,11 +15,6 @@ class HistoryCreate(HistoryBase):
     pass
 
 
-class HistoryUpdate(BaseModel):
-    action: Optional[str] = None
-    user_id: Optional[int] = None
-
-
 class HistoryRead(HistoryBase):
     id: int
     created_at: datetime

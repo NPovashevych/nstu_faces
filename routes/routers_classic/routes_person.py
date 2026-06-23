@@ -5,13 +5,14 @@ from typing import List
 from db.session import get_db
 from crud.crud_person import (
     get_person,
+    get_person_by_code,
+    get_person_by_qcode,
     get_persons,
-    create_person,
+    get_persons_by_cluster,
     update_person,
     delete_person,
-    get_person_by_qcode,
 )
-from schemas.schemas_person import PersonsCreate, PersonsUpdate, PersonsRead
+from schemas.schemas_person import PersonsUpdate, PersonsRead
 
 
 router = APIRouter(prefix="/persons", tags=["persons"])
@@ -22,25 +23,33 @@ def read_persons(skip: int = 0, limit: int = 100, db: Session = Depends(get_db))
     return get_persons(db, skip=skip, limit=limit)
 
 
+@router.get("/code/{code}", response_model=PersonsRead)
+def read_person_by_code(code: str, db: Session = Depends(get_db)):
+    db_person = get_person_by_code(db, code)
+    if db_person is None:
+        raise HTTPException(status_code=404, detail="Person not found")
+    return db_person
+
+
+@router.get("/qcode/{q_code}", response_model=PersonsRead)
+def read_person_by_qcode(q_code: str, db: Session = Depends(get_db)):
+    db_person = get_person_by_qcode(db, q_code)
+    if db_person is None:
+        raise HTTPException(status_code=404, detail="Person not found")
+    return db_person
+
+
+@router.get("/cluster/{cluster_id}", response_model=List[PersonsRead])
+def read_persons_by_cluster(cluster_id: int, db: Session = Depends(get_db)):
+    return get_persons_by_cluster(db, cluster_id)
+
+
 @router.get("/{person_id}", response_model=PersonsRead)
 def read_person(person_id: int, db: Session = Depends(get_db)):
     db_person = get_person(db, person_id)
     if db_person is None:
         raise HTTPException(status_code=404, detail="Person not found")
     return db_person
-
-
-@router.post("/", response_model=PersonsRead)
-def create_new_person(person: PersonsCreate, db: Session = Depends(get_db)):
-    if person.q_code:
-        existing = get_person_by_qcode(db, person.q_code)
-        if existing:
-            raise HTTPException(status_code=400, detail="Person with this q_code already exists")
-
-    # ⚠️ code треба генерувати (поки просто заглушка)
-    code = f"person_{person.name.lower().replace(' ', '_')}"
-
-    return create_person(db, person, code)
 
 
 @router.put("/{person_id}", response_model=PersonsRead)

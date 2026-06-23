@@ -4,7 +4,7 @@ import numpy as np
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
 
-from routers.commons import (
+from routes.routers_classic.commons import (
     similarity_percent_from_distance,
     normalize,
     cosine_distance,

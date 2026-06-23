@@ -1,6 +1,6 @@
 from datetime import datetime
 from pydantic import BaseModel
-from db.models import PersonStatus
+from db.enums import PersonStatus
 from typing import Optional
 
 

@@ -3,8 +3,8 @@ from typing import Optional, Any
 
 from pydantic import BaseModel
 
-from db.models import EmbeddingType
-from schemas.schemas_person import  PersonsRead
+from db.enums import EmbeddingType
+from schemas.schemas_person import PersonsRead
 
 
 class EmbeddingBase(BaseModel):

@@ -1,6 +1,6 @@
 from datetime import datetime
 from pydantic import BaseModel, EmailStr
-from db.models import UserRole
+from db.enums import UserRole
 from typing import Optional
 
 

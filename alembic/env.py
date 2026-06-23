@@ -20,7 +20,7 @@ if config.config_file_name is not None:
 # target_metadata = mymodel.Base.metadata
 
 from db.engine import BASE
-from db.models import DBUser, DBPerson, DBEmbedding
+import db.models
 
 target_metadata = BASE.metadata
 

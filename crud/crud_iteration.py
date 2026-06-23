@@ -1,7 +1,10 @@
 from sqlalchemy.orm import Session
 
 from db.models import DBIteration
-from schemas.schemas_iteration import IterationCreate, IterationUpdate
+from schemas.schemas_iteration import (
+    IterationCreate,
+    IterationUpdate,
+)
 
 
 def get_iteration(db: Session, iteration_id: int):
@@ -9,15 +12,15 @@ def get_iteration(db: Session, iteration_id: int):
 
 
 def get_iterations(db: Session, skip: int = 0, limit: int = 100):
-    return db.query(DBIteration).offset(skip).limit(limit).all()
+    return db.query(DBIteration).order_by(DBIteration.created_at.desc()).offset(skip).limit(limit).all()
 
 
-def get_iterations_by_media(db: Session, media_id: int):
-    return db.query(DBIteration).filter(DBIteration.media_id == media_id).all()
+def get_iterations_by_media(db: Session,media_id: int):
+    return db.query(DBIteration).filter(DBIteration.media_id == media_id).order_by(DBIteration.created_at.desc()).all()
 
 
 def get_iterations_by_user(db: Session, user_id: int):
-    return db.query(DBIteration).filter(DBIteration.user_id == user_id).all()
+    return db.query(DBIteration).filter(DBIteration.user_id == user_id).order_by(DBIteration.created_at.desc()).all()
 
 
 def create_iteration(db: Session, iteration: IterationCreate):
@@ -32,6 +35,7 @@ def create_iteration(db: Session, iteration: IterationCreate):
     db.add(db_iteration)
     db.commit()
     db.refresh(db_iteration)
+
     return db_iteration
 
 
@@ -48,6 +52,7 @@ def update_iteration(db: Session, iteration_id: int, iteration: IterationUpdate)
 
     db.commit()
     db.refresh(db_iteration)
+
     return db_iteration
 
 
@@ -59,4 +64,5 @@ def delete_iteration(db: Session, iteration_id: int):
 
     db.delete(db_iteration)
     db.commit()
+
     return db_iteration

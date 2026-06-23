@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from db.session import get_db
 from db.models import DBPerson, DBFace, DBFreeze, DBMedia
-from routers.commons import make_image_url, make_media_url
+from routes.routers_classic.commons import make_image_url, make_media_url
 
 
 router = APIRouter(prefix="/search-name", tags=["search by name"])

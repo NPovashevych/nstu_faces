@@ -24,7 +24,7 @@ from schemas.schemas_face import FaceCreate
 from schemas.schemas_iteration import IterationCreate, IterationUpdate
 from schemas.schemas_person import PersonsCreate
 
-from routers.commons import normalize, cosine_distance
+from routes.routers_classic import normalize, cosine_distance
 from old_versions.face_quality_v2 import is_good_face
 from old_versions.clip_face_filter import get_clip, check_face_suspicion
 

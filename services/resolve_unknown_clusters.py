@@ -11,7 +11,7 @@ from db.session import SessionLocal
 from db.models import DBPerson, DBEmbedding, DBFace
 from db.enums import PersonStatus, EmbeddingType
 
-from routers.commons import normalize, cosine_distance
+from routes.routers_classic import normalize, cosine_distance
 
 Path("logs").mkdir(exist_ok=True)
 

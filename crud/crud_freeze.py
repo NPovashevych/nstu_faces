@@ -16,12 +16,12 @@ def get_freezes_by_media(db: Session, media_id: int):
     return db.query(DBFreeze).filter(DBFreeze.media_id == media_id).all()
 
 
+def get_freeze_by_path(db: Session,freeze_path: str,):
+    return db.query(DBFreeze).filter(DBFreeze.freeze_path == freeze_path).first()
+
+
 def create_freeze(db: Session, freeze: FreezeCreate):
-    existing = (
-        db.query(DBFreeze)
-        .filter(DBFreeze.freeze_path == freeze.freeze_path)
-        .first()
-    )
+    existing = db.query(DBFreeze).filter(DBFreeze.freeze_path == freeze.freeze_path).first()
 
     if existing:
         return existing

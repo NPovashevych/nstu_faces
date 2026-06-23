@@ -4,7 +4,7 @@ import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
 from sqlalchemy.orm import Session
 
-from routers.commons import cosine_distance, normalize, make_image_url, image_to_base64, load_reference_embeddings, make_media_url
+from routes.routers_classic import cosine_distance, normalize, make_image_url, image_to_base64, load_reference_embeddings, make_media_url
 from db.session import get_db
 from db.models import DBPerson, DBFace, DBFreeze, DBMedia
 

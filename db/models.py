@@ -1,11 +1,11 @@
-from sqlalchemy import Column, Integer, String, Enum as SAEnum, DateTime, ForeignKey, Float, text
+from sqlalchemy import Column, Integer, String, Enum as SAEnum, DateTime, ForeignKey, Float, text, Boolean
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from db.engine import BASE
 
-from db.enums import UserRole, PersonStatus, EmbeddingType, MediaSource, MediaType, IterationStatus, FaceGender, FaceCategory
+from db.enums import UserRole, PersonStatus, EmbeddingType, MediaType, IterationStatus, FaceGender
 
 
 class DBUser(BASE):
@@ -59,12 +59,23 @@ class DBEmbedding(BASE):
     faces = relationship("DBFace", back_populates="embedding")
 
 
+class DBSource(BASE):
+    __tablename__ = "source"
+
+    id = Column(Integer, primary_key=True)
+    code = Column(String, nullable=False, unique=True, index=True)
+    name = Column(String, nullable=False, index=True)
+    description = Column(String, nullable=True)
+    is_active = Column(Boolean, nullable=False, server_default=text("true"))
+
+    medias = relationship("DBMedia", back_populates="source")
+
+
 class DBMedia(BASE):
     __tablename__ = "media"
 
     id = Column(Integer, primary_key=True)
-    material_id = Column(String, nullable=False, unique=True, index=True)
-    source = Column(SAEnum(MediaSource, name="media_source"), nullable=False, index=True)
+    material_id = Column(String, nullable=True, unique=True, index=True)
     media_type = Column(SAEnum(MediaType, name="media_type"), nullable=False, index=True)
     mxf_path = Column(String, nullable=True, unique=True, index=True)
     mp4_path = Column(String, nullable=True, unique=True, index=True)
@@ -72,9 +83,11 @@ class DBMedia(BASE):
     recorded_at = Column(DateTime(timezone=True), nullable=True)
     uploaded_at = Column(DateTime(timezone=True), default=func.now(), nullable=False)
 
+    source_id = Column(Integer, ForeignKey("source.id"), nullable=False, index=True)
     user_id = Column(Integer, ForeignKey("user.id"), nullable=False, index=True)
-    user = relationship("DBUser", back_populates="medias")
 
+    user = relationship("DBUser", back_populates="medias")
+    source = relationship("DBSource", back_populates="medias")
     freezes = relationship("DBFreeze", back_populates="media", cascade="all, delete-orphan")
     iterations = relationship("DBIteration", back_populates="media", cascade="all, delete-orphan")
 
@@ -125,13 +138,25 @@ class DBHistory(BASE):
     user = relationship("DBUser", back_populates="histories")
 
 
+class DBFaceCategory(BASE):
+    __tablename__ = "face_category"
+
+    id = Column(Integer, primary_key=True)
+    code = Column(String, nullable=False, unique=True, index=True)
+    name = Column(String, nullable=False, index=True)
+    description = Column(String, nullable=True)
+
+    is_person = Column(Boolean, nullable=False, index=True, server_default=text("false"))
+    is_active = Column(Boolean, nullable=False, server_default=text("true"))
+
+    faces = relationship("DBFace", back_populates="face_category")
+
+
 class DBFace(BASE):
     __tablename__ = "face"
 
     id = Column(Integer, primary_key=True)
     bbox = Column(ARRAY(Float), nullable=False)
-    category = Column(SAEnum(FaceCategory, name="face_category"), nullable=False, index=True, default=FaceCategory.uncertain, server_default=text("'uncertain'"))
-    category_score = Column(Float, nullable=True, index=True)
     quality = Column(Float, nullable=True, index=True)
     gender = Column(SAEnum(FaceGender, name="face_gender"), nullable=False, index=True, default=FaceGender.unknown, server_default=text("'unknown'"))
     confidence = Column(Integer, nullable=True, index=True)
@@ -146,6 +171,10 @@ class DBFace(BASE):
 
     person_id = Column(Integer, ForeignKey("person.id"), nullable=True, index=True)
     person = relationship("DBPerson", back_populates="faces")
+
+    category_id = Column(Integer, ForeignKey("face_category.id"), nullable=False, index=True)
+    face_category = relationship("DBFaceCategory", back_populates="faces")
+    category_score = Column(Float, nullable=True, index=True)
 
     iteration_id = Column(Integer, ForeignKey("iteration.id"), nullable=False, index=True)
     iteration = relationship("DBIteration", back_populates="faces")

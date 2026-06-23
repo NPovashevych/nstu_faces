@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
 
 from db.session import get_db
-from routers.commons import make_image_url
+from routes.routers_classic import make_image_url
 from db.models import DBMedia, DBFreeze, DBFace
 from db.enums import PersonStatus
 

@@ -30,7 +30,7 @@ from schemas.schemas_face import FaceCreate
 from schemas.schemas_iteration import IterationCreate, IterationUpdate
 from schemas.schemas_person import PersonsCreate
 
-from routers.commons import normalize, cosine_distance
+from routes.routers_classic import normalize, cosine_distance
 
 from services.face_quality_v3 import get_face_quality
 from services.clip_face_filter_v2 import get_clip, analyze_face_category
