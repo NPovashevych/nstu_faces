@@ -1,6 +1,6 @@
 import os
 
-from config import PERSONS_FOLDER
+from services.config import PERSONS_FOLDER
 
 root_folder = PERSONS_FOLDER
 

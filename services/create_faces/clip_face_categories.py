@@ -1,4 +1,15 @@
-# services/clip_face_categories.py
+# services/create_faces/clip_face_categories.py
+
+CATEGORY_IDENTIFIABLE = "identifiable"
+CATEGORY_UNIDENTIFIABLE = "unidentifiable"
+CATEGORY_LOW_QUALITY = "low_quality"
+CATEGORY_NON_HUMAN = "non_human"
+CATEGORY_ARTIFICIAL = "artificial"
+CATEGORY_AI_GENERATED = "ai_generated"
+CATEGORY_UNCERTAIN = "uncertain"
+
+DEFAULT_FACE_CATEGORY = CATEGORY_UNCERTAIN
+
 
 HUMAN_IDENTIFIABLE_PROMPTS = [
     "a clear real human face",
@@ -18,7 +29,6 @@ HUMAN_IDENTIFIABLE_PROMPTS = [
     "a real politician face on television",
     "a real presenter face in a broadcast",
 ]
-
 
 HUMAN_UNIDENTIFIABLE_PROMPTS = [
     "a real person with a covered face",
@@ -44,7 +54,6 @@ HUMAN_UNIDENTIFIABLE_PROMPTS = [
     "a person with face obscured",
 ]
 
-
 NON_HUMAN_PROMPTS = [
     "an animal face",
     "a dog face",
@@ -67,9 +76,7 @@ NON_HUMAN_PROMPTS = [
     "a false face detection",
 ]
 
-
-ARTIFICIAL_HUMAN_PROMPTS = [
-    # mannequin / doll / puppet
+ARTIFICIAL_PROMPTS = [
     "a doll face",
     "a puppet face",
     "a mannequin face",
@@ -79,8 +86,6 @@ ARTIFICIAL_HUMAN_PROMPTS = [
     "a life size mannequin",
     "a plastic human face",
     "a toy human face",
-
-    # wax figure / statue / sculpture
     "a wax figure face",
     "a museum wax figure",
     "a statue face",
@@ -101,8 +106,6 @@ ARTIFICIAL_HUMAN_PROMPTS = [
     "a bronze statue face",
     "a carved human face",
     "a religious statue face",
-
-    # museum / historical exhibits
     "a museum exhibit with a human face",
     "a historical exhibit with a human face",
     "a reconstructed historical person",
@@ -110,8 +113,6 @@ ARTIFICIAL_HUMAN_PROMPTS = [
     "a human figure in a museum display",
     "a historical costume mannequin",
     "a museum doll",
-
-    # paintings / drawings / portraits
     "a painted human face",
     "a painted face",
     "a face in a painting",
@@ -127,8 +128,6 @@ ARTIFICIAL_HUMAN_PROMPTS = [
     "a face in artwork",
     "a decorative human face",
     "a decorative portrait",
-
-    # framed portraits / framed photos / wall art
     "a face in a framed portrait",
     "a human face in a framed picture on a wall",
     "a portrait hanging on a wall",
@@ -137,16 +136,12 @@ ARTIFICIAL_HUMAN_PROMPTS = [
     "a face in wall art",
     "a mural face",
     "a decorative picture with a human face",
-
-    # religious icons / religious paintings
     "a face in a religious icon",
     "a painted religious figure",
     "a saint portrait in an icon",
     "a religious painting with a human face",
     "a painted icon of a saint",
     "a human face in an icon",
-
-    # tapestry / textile / embroidery
     "a face in a tapestry",
     "a tapestry face",
     "a face on a tapestry",
@@ -155,19 +150,14 @@ ARTIFICIAL_HUMAN_PROMPTS = [
     "an embroidered face",
     "an embroidered human face",
     "a decorative textile face",
-
-    # cartoon / animation / rendered
     "a cartoon human face",
     "an animated character face",
     "a 3d rendered human-like face",
     "a computer generated human-like face",
-
-    # masks
     "a mask shaped like a human face",
     "a decorative mask",
     "a human face mask",
 ]
-
 
 AI_GENERATED_PROMPTS = [
     "an ai generated human face",
@@ -180,7 +170,6 @@ AI_GENERATED_PROMPTS = [
     "a virtual human face",
     "a CGI human face",
 ]
-
 
 UNCERTAIN_PROMPTS = [
     "an unclear face",
@@ -195,32 +184,69 @@ UNCERTAIN_PROMPTS = [
 
 
 CLIP_FACE_CATEGORIES = {
-    "real_identifiable": HUMAN_IDENTIFIABLE_PROMPTS,
-    "real_unidentifiable": HUMAN_UNIDENTIFIABLE_PROMPTS,
-    "non_human": NON_HUMAN_PROMPTS,
-    "artificial_human": ARTIFICIAL_HUMAN_PROMPTS,
-    "ai_generated": AI_GENERATED_PROMPTS,
-    "uncertain": UNCERTAIN_PROMPTS,
+    CATEGORY_IDENTIFIABLE: HUMAN_IDENTIFIABLE_PROMPTS,
+    CATEGORY_UNIDENTIFIABLE: HUMAN_UNIDENTIFIABLE_PROMPTS,
+    CATEGORY_LOW_QUALITY: HUMAN_UNIDENTIFIABLE_PROMPTS,
+    CATEGORY_NON_HUMAN: NON_HUMAN_PROMPTS,
+    CATEGORY_ARTIFICIAL: ARTIFICIAL_PROMPTS,
+    CATEGORY_AI_GENERATED: AI_GENERATED_PROMPTS,
+    CATEGORY_UNCERTAIN: UNCERTAIN_PROMPTS,
 }
 
+FACE_CATEGORY_GROUPS = {
+    CATEGORY_IDENTIFIABLE: "human",
+    CATEGORY_UNIDENTIFIABLE: "human",
+    CATEGORY_LOW_QUALITY: "human",
+    CATEGORY_NON_HUMAN: "fault",
+    CATEGORY_ARTIFICIAL: "fault",
+    CATEGORY_AI_GENERATED: "fault",
+    CATEGORY_UNCERTAIN: "risky",
+}
 
 HUMAN_CATEGORIES = {
-    "real_identifiable",
-    "real_unidentifiable",
-    "artificial_human",
-    "ai_generated",
+    CATEGORY_IDENTIFIABLE,
+    CATEGORY_UNIDENTIFIABLE,
+    CATEGORY_LOW_QUALITY,
 }
 
+FAULT_CATEGORIES = {
+    CATEGORY_NON_HUMAN,
+    CATEGORY_ARTIFICIAL,
+    CATEGORY_AI_GENERATED,
+}
+
+RISKY_CATEGORIES = {
+    CATEGORY_UNCERTAIN,
+}
 
 IDENTIFIABLE_CATEGORIES = {
-    "real_identifiable",
+    CATEGORY_IDENTIFIABLE,
 }
 
-
 NON_IDENTIFIABLE_CATEGORIES = {
-    "real_unidentifiable",
-    "non_human",
-    "artificial_human",
-    "ai_generated",
-    "uncertain",
+    CATEGORY_UNIDENTIFIABLE,
+    CATEGORY_LOW_QUALITY,
+    CATEGORY_NON_HUMAN,
+    CATEGORY_ARTIFICIAL,
+    CATEGORY_AI_GENERATED,
+    CATEGORY_UNCERTAIN,
+}
+
+SERVICE_CLUSTER_CATEGORIES = {
+    CATEGORY_UNIDENTIFIABLE,
+    CATEGORY_LOW_QUALITY,
+    CATEGORY_NON_HUMAN,
+    CATEGORY_ARTIFICIAL,
+    CATEGORY_AI_GENERATED,
+    CATEGORY_UNCERTAIN,
+}
+
+REQUIRED_FACE_CATEGORIES = {
+    CATEGORY_IDENTIFIABLE,
+    CATEGORY_UNIDENTIFIABLE,
+    CATEGORY_LOW_QUALITY,
+    CATEGORY_NON_HUMAN,
+    CATEGORY_ARTIFICIAL,
+    CATEGORY_AI_GENERATED,
+    CATEGORY_UNCERTAIN,
 }

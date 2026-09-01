@@ -12,7 +12,7 @@ import numpy as np
 from insightface.app import FaceAnalysis
 from sqlalchemy.orm import Session
 
-from config import PERSONS_FOLDER, NEW_WIKI_PATH
+from services.config import PERSONS_FOLDER, NEW_WIKI_PATH
 
 from db.session import SessionLocal
 from db.enums import PersonStatus, EmbeddingType
@@ -32,7 +32,7 @@ from schemas.schemas_embedding import EmbeddingCreate
 os.environ["ORT_LOGGING_LEVEL"] = "3"
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
-Path("logs").mkdir(exist_ok=True)
+Path("../logs").mkdir(exist_ok=True)
 
 logging.getLogger("insightface").setLevel(logging.ERROR)
 logging.getLogger("onnxruntime").setLevel(logging.ERROR)
@@ -43,18 +43,18 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler("logs/add_persons_from_folder.log", encoding="utf-8"),
+        logging.FileHandler("../logs/add_persons_from_folder.log", encoding="utf-8"),
     ],
 )
 
 
 MIN_W = 15
 MIN_H = 15
-BLUR = 12.9
+BLUR = 10
 DUPLICATE_SIMILARITY = 0.98
 
-MAX_DIST_FROM_MEAN = 0.55
-MAX_PAIRWISE_DIST = 0.98
+MAX_DIST_FROM_MEAN = 0.45
+MAX_PAIRWISE_DIST = 0.72
 _INSIGHTFACE_CACHE = None
 
 
@@ -161,6 +161,49 @@ def normalize_embedding(embedding):
     return embedding / (np.linalg.norm(embedding) + 1e-8)
 
 
+def get_existing_reference_gender(existing_embeddings):
+    genders = []
+
+    for db_embedding in existing_embeddings:
+        source = db_embedding.source or {}
+        gender = source.get("gender")
+
+        if gender in {"male", "female"}:
+            genders.append(gender)
+
+    if not genders:
+        return None
+
+    male_count = genders.count("male")
+    female_count = genders.count("female")
+
+    if male_count > female_count:
+        return "male"
+
+    if female_count > male_count:
+        return "female"
+
+    return None
+
+
+def get_gender_consensus(genders):
+    valid_genders = [gender for gender in genders if gender in {"male", "female"}]
+
+    if not valid_genders:
+        return "unknown"
+
+    male_count = valid_genders.count("male")
+    female_count = valid_genders.count("female")
+
+    if male_count > female_count:
+        return "male"
+
+    if female_count > male_count:
+        return "female"
+
+    return "unknown"
+
+
 def get_embedding(model, image_path: Path):
     try:
         cv_img = cv2.imdecode(
@@ -200,7 +243,16 @@ def get_embedding(model, image_path: Path):
         key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]),
     )
 
-    return face.embedding
+    gender = getattr(face, "gender", None)
+
+    if gender == 1:
+        gender_name = "male"
+    elif gender == 0:
+        gender_name = "female"
+    else:
+        gender_name = "unknown"
+
+    return face.embedding, gender_name
 
 
 def get_existing_reference_embeddings(db: Session, person_id: int):
@@ -330,20 +382,15 @@ def get_or_create_person(db: Session, person_folder: Path, people_db: dict):
 
 def process_person_folder(db: Session, model, person_folder: Path, people_db: dict):
     if not person_folder.is_dir():
-        return 0, 0
+        return 0, 0, False, None, None
 
     db_person = get_or_create_person(db, person_folder, people_db)
-
     existing_embeddings = sync_face_database(db, person_folder, db_person)
-
-    known_files = {
-        get_embedding_file_name(embedding)
-        for embedding in existing_embeddings
-    }
-
+    known_files = {get_embedding_file_name(embedding) for embedding in existing_embeddings}
     new_encodings = []
     new_files = []
     skipped = []
+    new_genders = []
 
     for photo in sorted(person_folder.iterdir()):
         if not photo.is_file():
@@ -353,11 +400,13 @@ def process_person_folder(db: Session, model, person_folder: Path, people_db: di
             skipped.append((photo.name, "вже є в БД"))
             continue
 
-        emb = get_embedding(model, photo)
+        result = get_embedding(model, photo)
 
-        if emb is None:
+        if result is None:
             skipped.append((photo.name, "нема embedding"))
             continue
+
+        emb, gender = result
 
         if is_duplicate_embedding(emb, existing_embeddings):
             skipped.append((photo.name, "дубль"))
@@ -365,6 +414,7 @@ def process_person_folder(db: Session, model, person_folder: Path, people_db: di
 
         new_encodings.append(emb)
         new_files.append(photo.name)
+        new_genders.append(gender)
 
     is_ok, false_photos = is_one_person(new_encodings, new_files)
 
@@ -372,9 +422,19 @@ def process_person_folder(db: Session, model, person_folder: Path, people_db: di
         logging.warning(f"Папка {person_folder.name} потребує перевірки.")
         for file_name, dist in false_photos:
             logging.warning(f"Сумнівне фото: {file_name} (distance={dist:.2f})")
-        return 0, len(skipped) + len(new_files)
+        return 0, len(skipped) + len(new_files), False, db_person.id, db_person.name
 
     added_count = 0
+    existing_gender = get_existing_reference_gender(existing_embeddings)
+
+    if existing_gender:
+        person_gender = existing_gender
+    else:
+        person_gender = get_gender_consensus(new_genders)
+    gender_needs_manual_check = person_gender == "unknown" and len(new_encodings) > 0
+
+
+    # logging.info(f"{person_folder.name}: gender={person_gender}")
 
     for emb, file_name in zip(new_encodings, new_files):
         photo_path = person_folder / file_name
@@ -386,6 +446,7 @@ def process_person_folder(db: Session, model, person_folder: Path, people_db: di
                 "file_path": str(photo_path),
                 "person_folder": person_folder.name,
                 "created_by": "add_persons_from_folder.py",
+                "gender": person_gender,
             },
             vector=emb.tolist(),
             person_id=db_person.id,
@@ -399,7 +460,7 @@ def process_person_folder(db: Session, model, person_folder: Path, people_db: di
         logging.info(f"{person_folder.name}: +{added_count} / -{len(skipped)}")
         logging.info("-----------------------------------------------")
 
-    return added_count, len(skipped)
+    return added_count, len(skipped), gender_needs_manual_check, db_person.id, db_person.name
 
 
 def build_face_database_from_folder(base_folder: Path):
@@ -410,18 +471,36 @@ def build_face_database_from_folder(base_folder: Path):
 
     total_added = 0
     total_skipped = 0
+    gender_manual_check = []
 
     try:
         for person_folder in sorted(base_folder.iterdir()):
-            added, skipped = process_person_folder(db, model, person_folder, people_db)
+            added, skipped, gender_check, person_id, person_name = process_person_folder(db, model, person_folder, people_db)
+
             total_added += added
             total_skipped += skipped
 
+            if gender_check:
+                gender_manual_check.append((person_id, person_name))
+
         logging.info(f"Всього додано: {total_added}, всього не додано: {total_skipped}.")
+
+        if gender_manual_check:
+            logging.warning("")
+            logging.warning("===============================================")
+            logging.warning("GENDER ПОТРЕБУЄ РУЧНОЇ ПЕРЕВІРКИ")
+            logging.warning("===============================================")
+
+            for person_id, person_name in gender_manual_check:
+                logging.warning(f"person_id={person_id} | name={person_name}")
+
+            logging.warning(f"Всього персон для перевірки: {len(gender_manual_check)}")
+            logging.warning("===============================================")
+        else:
+            logging.info("Gender: персон для ручної перевірки немає.")
 
     finally:
         db.close()
-
 
 if __name__ == "__main__":
     start = datetime.now()

@@ -30,9 +30,9 @@ def upgrade() -> None:
     sa.Column('is_active', sa.Boolean(), server_default=sa.text('true'), nullable=False),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index(op.f('ix_face_category_code'), 'face_category', ['code'], unique=True)
+    op.create_index(op.f('ix_face_category_code'), 'face_category', ['code'], unique=False)
     op.create_index(op.f('ix_face_category_is_person'), 'face_category', ['is_person'], unique=False)
-    op.create_index(op.f('ix_face_category_name'), 'face_category', ['name'], unique=False)
+    op.create_index(op.f('ix_face_category_name'), 'face_category', ['name'], unique=True)
     op.create_table('media_description',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('material_id', sa.String(), nullable=False),
@@ -80,8 +80,8 @@ def upgrade() -> None:
     sa.Column('is_active', sa.Boolean(), server_default=sa.text('true'), nullable=False),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index(op.f('ix_source_code'), 'source', ['code'], unique=True)
-    op.create_index(op.f('ix_source_name'), 'source', ['name'], unique=False)
+    op.create_index(op.f('ix_source_code'), 'source', ['code'], unique=False)
+    op.create_index(op.f('ix_source_name'), 'source', ['name'], unique=True)
     op.create_table('user',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('name', sa.String(), nullable=False),

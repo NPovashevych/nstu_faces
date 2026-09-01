@@ -32,9 +32,9 @@ from schemas.schemas_person import PersonsCreate
 
 from routes.routers_classic import normalize, cosine_distance
 
-from services.face_quality_v3 import get_face_quality
-from services.clip_face_filter_v2 import get_clip, analyze_face_category
-from services.clip_face_categories import (
+from services.create_faces.face_quality_v3 import get_face_quality
+from services.create_faces.clip_face_filter_v2 import get_clip, analyze_face_category
+from services.create_faces.clip_face_categories import (
     IDENTIFIABLE_CATEGORIES,
     NON_IDENTIFIABLE_CATEGORIES,
 )

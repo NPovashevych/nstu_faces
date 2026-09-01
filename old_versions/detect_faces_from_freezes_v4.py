@@ -11,14 +11,8 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from db.session import SessionLocal
-from db.enums import (
-    EmbeddingType,
-    FaceCategory,
-    FaceGender,
-    IterationStatus,
-    PersonStatus,
-)
-from db.models import DBEmbedding, DBFreeze, DBMedia, DBPerson
+from db.enums import EmbeddingType, FaceGender, IterationStatus, PersonStatus
+from db.models import DBEmbedding, DBFaceCategory, DBFreeze, DBIteration, DBMedia, DBPerson
 
 from crud.crud_embedding import create_embedding
 from crud.crud_face import create_face, get_faces_by_freeze
@@ -30,32 +24,37 @@ from schemas.schemas_face import FaceCreate
 from schemas.schemas_iteration import IterationCreate, IterationUpdate
 from schemas.schemas_person import PersonsCreate
 
-from routes.routers_classic import normalize, cosine_distance
+from routes.routers_classic.commons import normalize, cosine_distance
 
-from services.face_quality_v3 import get_face_quality
-from services.clip_face_filter_v2 import get_clip, analyze_face_category
+from services.create_faces.face_quality_v3 import get_face_quality
+from services.create_faces.clip_face_filter_v2 import get_clip, analyze_face_category
+from services.create_faces.clip_face_categories import DEFAULT_FACE_CATEGORY, CATEGORY_IDENTIFIABLE, CATEGORY_LOW_QUALITY
 
 
-Path("logs").mkdir(exist_ok=True)
+Path("../services/logs").mkdir(exist_ok=True)
 
 logging.basicConfig(
     level=logging.INFO,
     format="[%(levelname)8s]: %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler("logs/detect_faces_from_freezes_v2.log", encoding="utf-8"),
+        logging.FileHandler(
+            "../services/logs/detect_faces_from_freezes_v4.log",
+            encoding="utf-8",
+        ),
     ],
 )
 
 
+SERVICE_NAME = "detect_faces_from_freezes_v4.py"
+
 FACE_DET_SIZE = 640
-MIN_DET_SCORE = 0.65 # відсікти кота
-
+MIN_DET_SCORE = 0.60 # Впевненість Buffalo в розпізнання обличчя - перевірити кота
 DIST_TOLERANCE = 0.45
-STEP_TOLERANCE = 0.055 # зловити кучму з нахиленим обличчям
+STEP_TOLERANCE = 0.055  # Впевненість Buffalo у відповідності еталону - зловити кучму з нахиленим обличчям
+UNKNOWN_TOLERANCE = 0.55  # групування пиріжкова варта
 
-UNKNOWN_TOLERANCE = 0.55 # групування пиріжкова варта
-LOW_QUALITY_THRESHOLD = 0.65
+LOW_QUALITY_THRESHOLD = 0.60
 
 USER_ID = 1
 
@@ -80,6 +79,61 @@ def get_insightface():
     return _INSIGHTFACE_CACHE
 
 
+def load_face_categories(db: Session):
+    rows = (
+        db.query(DBFaceCategory)
+        .filter(DBFaceCategory.is_active.is_(True))
+        .all()
+    )
+
+    categories = {row.name: row for row in rows}
+    logging.info(f"Loaded active face categories: {len(categories)}")
+
+    return categories
+
+
+def get_category(face_categories: dict, category_name: str) -> DBFaceCategory:
+    category = face_categories.get(category_name)
+
+    if category:
+        return category
+
+    fallback = face_categories.get(DEFAULT_FACE_CATEGORY)
+
+    if fallback:
+        logging.warning(
+            f"Face category '{category_name}' not found. "
+            f"Fallback to '{DEFAULT_FACE_CATEGORY}'."
+        )
+        return fallback
+
+    raise RuntimeError(
+        f"Face category '{category_name}' not found, "
+        f"fallback '{DEFAULT_FACE_CATEGORY}' not found."
+    )
+
+
+def get_media_for_face_detection(db: Session):
+    processed_media_ids = (
+        db.query(DBIteration.media_id)
+        .filter(DBIteration.status == IterationStatus.completed)
+        .subquery()
+    )
+
+    medias = (
+        db.query(DBMedia)
+        .join(DBFreeze, DBFreeze.media_id == DBMedia.id)
+        .filter(~DBMedia.id.in_(processed_media_ids))
+        .distinct()
+        .order_by(DBMedia.id)
+        .all()
+    )
+
+    logging.info(f"Media to process: {len(medias)}")
+
+    return medias
+
+
 def get_confidence(dist: float) -> int:
     if dist <= DIST_TOLERANCE:
         return 0
@@ -89,28 +143,6 @@ def get_confidence(dist: float) -> int:
             return i
 
     return -1
-
-
-def to_face_category(value: str) -> FaceCategory:
-    try:
-        return FaceCategory(value)
-    except ValueError:
-        return FaceCategory.uncertain
-
-
-def map_gender(face, category: FaceCategory) -> FaceGender:
-    if category != FaceCategory.real_identifiable:
-        return FaceGender.unknown
-
-    gender = getattr(face, "gender", None)
-
-    if gender == 1:
-        return FaceGender.male
-
-    if gender == 0:
-        return FaceGender.female
-
-    return FaceGender.unknown
 
 
 def load_reference_embeddings(db: Session):
@@ -132,6 +164,7 @@ def load_reference_embeddings(db: Session):
         )
 
     logging.info(f"Loaded reference embeddings: {len(refs)}")
+
     return refs
 
 
@@ -182,11 +215,8 @@ def create_unknown_cluster_person(db: Session):
     return db_person
 
 
-def get_or_create_service_cluster_person(
-    db: Session,
-    category: FaceCategory,
-):
-    cluster_tag = f"{category.value}_cluster"
+def get_or_create_service_cluster_person(db: Session, category_name: str):
+    cluster_tag = f"{category_name}_cluster"
 
     db_person = (
         db.query(DBPerson)
@@ -238,10 +268,7 @@ def load_unknown_cluster_embeddings(db: Session):
     return items
 
 
-def find_or_create_unknown_cluster_person(
-    db: Session,
-    embedding,
-):
+def find_or_create_unknown_cluster_person(db: Session, embedding):
     cluster_embeddings = load_unknown_cluster_embeddings(db)
 
     best_person_id = None
@@ -255,7 +282,11 @@ def find_or_create_unknown_cluster_person(
             best_person_id = item["person_id"]
 
     if best_person_id is not None and best_dist <= UNKNOWN_TOLERANCE:
-        db_person = db.query(DBPerson).filter(DBPerson.id == best_person_id).first()
+        db_person = (
+            db.query(DBPerson)
+            .filter(DBPerson.id == best_person_id)
+            .first()
+        )
 
         if db_person:
             db_person.cluster_tag = db_person.cluster_tag or db_person.name
@@ -269,6 +300,7 @@ def find_or_create_unknown_cluster_person(
 
 
 def make_analysis(quality_details: dict, category_result: dict) -> dict:
+
     return {
         "quality": quality_details,
         "clip": {
@@ -281,17 +313,33 @@ def make_analysis(quality_details: dict, category_result: dict) -> dict:
     }
 
 
-def make_analysis_without_clip(quality_details: dict, reason: str) -> dict:
+def make_analysis_without_clip(quality_details: dict, reason: str, category_name: str) -> dict:
+
     return {
         "quality": quality_details,
         "clip": {
-            "category": reason,
+            "category": category_name,
             "category_score": None,
-            "best_clip_category": None,
+            "best_clip_category": reason,
             "best_clip_score": None,
             "clip_scores": None,
         },
     }
+
+
+def map_gender(face, category_name: str) -> FaceGender:
+    if category_name != CATEGORY_IDENTIFIABLE:
+        return FaceGender.unknown
+
+    gender = getattr(face, "gender", None)
+
+    if gender == 1:
+        return FaceGender.male
+
+    if gender == 0:
+        return FaceGender.female
+
+    return FaceGender.unknown
 
 
 def create_detected_embedding(
@@ -301,7 +349,7 @@ def create_detected_embedding(
     freeze: DBFreeze,
     face,
     distance,
-    category: FaceCategory,
+    category_name: str,
     category_score,
     quality: float,
     analysis: dict,
@@ -315,11 +363,11 @@ def create_detected_embedding(
             "freeze_path": freeze.freeze_path,
             "bbox": bbox,
             "distance": distance,
-            "category": category.value,
+            "category": category_name,
             "category_score": category_score,
             "quality": quality,
             "analysis": analysis,
-            "created_by": "detect_faces_from_freezes_v4.py",
+            "created_by": SERVICE_NAME,
         },
         vector=embedding.tolist(),
         person_id=person_id,
@@ -331,7 +379,7 @@ def create_detected_embedding(
 def create_face_row(
     db: Session,
     face,
-    category: FaceCategory,
+    category_id: int,
     category_score,
     quality: float,
     gender: FaceGender,
@@ -346,7 +394,7 @@ def create_face_row(
 
     face_create = FaceCreate(
         bbox=bbox,
-        category=category,
+        category_id=category_id,
         category_score=category_score,
         quality=quality,
         gender=gender,
@@ -368,7 +416,7 @@ def create_embedding_and_face(
     emb,
     person_id: int,
     distance,
-    category: FaceCategory,
+    category: DBFaceCategory,
     category_score,
     quality: float,
     gender: FaceGender,
@@ -376,6 +424,7 @@ def create_embedding_and_face(
     analysis: dict,
     iteration_id: int,
 ):
+
     detected_embedding = create_detected_embedding(
         db=db,
         person_id=person_id,
@@ -383,7 +432,7 @@ def create_embedding_and_face(
         freeze=freeze,
         face=face,
         distance=distance,
-        category=category,
+        category_name=category.name,
         category_score=category_score,
         quality=quality,
         analysis=analysis,
@@ -392,7 +441,7 @@ def create_embedding_and_face(
     create_face_row(
         db=db,
         face=face,
-        category=category,
+        category_id=category.id,
         category_score=category_score,
         quality=quality,
         gender=gender,
@@ -417,6 +466,7 @@ def process_freeze(
     freeze: DBFreeze,
     iteration_id: int,
     reference_embeddings,
+    face_categories: dict,
 ):
     existing_faces = get_faces_by_freeze(db, freeze.id)
 
@@ -441,11 +491,11 @@ def process_freeze(
     faces = face_model.get(img)
 
     created = 0
+    skipped_low_det_score = 0
 
     for face in faces:
         bbox = face.bbox.astype(float).tolist()
-
-        quality, quality_details = get_face_quality(img, face)
+        det_score = float(getattr(face, "det_score", 0.0) or 0.0)
         emb = normalize(face.embedding)
 
         # 1. кноун
@@ -458,12 +508,15 @@ def process_freeze(
         )
 
         if can_use_known_match:
-            category = FaceCategory.real_identifiable
+            category = get_category(face_categories, CATEGORY_IDENTIFIABLE)
             category_score = confidence
+
+            quality, quality_details = get_face_quality(img, face)
 
             analysis = make_analysis_without_clip(
                 quality_details=quality_details,
                 reason="not_checked_known_match",
+                category_name=category.name,
             )
 
             person_id = best_ref["person_id"]
@@ -479,7 +532,7 @@ def process_freeze(
                 category=category,
                 category_score=category_score,
                 quality=quality,
-                gender=map_gender(face, category),
+                gender=map_gender(face, category.name),
                 confidence=confidence,
                 analysis=analysis,
                 iteration_id=iteration_id,
@@ -488,35 +541,44 @@ def process_freeze(
             created += 1
 
             logging.info(
-                f"Created known face freeze_id={freeze.id}, person_id={person_id}, "
-                f"dist={distance_for_source}, confidence={confidence}, "
+                f"Created known face freeze_id={freeze.id}, "
+                f"person_id={person_id}, "
+                f"dist={distance_for_source}, "
+                f"confidence={confidence}, "
+                f"det_score={det_score}, "
                 f"quality={quality}"
             )
 
             continue
 
-        # 2. фільтр якості.
+        # 2. фільтр впевненості Buffalo, що це людина.
+        if det_score < MIN_DET_SCORE:
+            skipped_low_det_score += 1
 
-        det_score = float(getattr(face, "det_score", 0.0) or 0.0)
-
-        if quality < LOW_QUALITY_THRESHOLD or det_score < MIN_DET_SCORE:
-            category = FaceCategory.low_quality
-            category_score = quality
-
-            reason = (
-                "not_checked_low_quality"
-                if quality < LOW_QUALITY_THRESHOLD
-                else "not_checked_low_det_score"
+            logging.info(
+                f"Skip face low det_score freeze_id={freeze.id}, "
+                f"det_score={det_score}, "
+                f"bbox={bbox}"
             )
+
+            continue
+
+        # 3. фільтр якості.
+        quality, quality_details = get_face_quality(img, face)
+
+        if quality < LOW_QUALITY_THRESHOLD:
+            category = get_category(face_categories, CATEGORY_LOW_QUALITY)
+            category_score = quality
 
             analysis = make_analysis_without_clip(
                 quality_details=quality_details,
-                reason=reason,
+                reason="not_checked_low_quality",
+                category_name=category.name,
             )
 
             service_person = get_or_create_service_cluster_person(
                 db=db,
-                category=category,
+                category_name=category.name,
             )
 
             create_embedding_and_face(
@@ -540,14 +602,14 @@ def process_freeze(
             logging.info(
                 f"Created low_quality face freeze_id={freeze.id}, "
                 f"person_id={service_person.id}, "
-                f"reason={reason}, "
-                f"category={category.value}:{category_score}, "
-                f"quality={quality}, det_score={det_score}"
+                f"category={category.name}:{category_score}, "
+                f"quality={quality}, "
+                f"det_score={det_score}"
             )
 
             continue
 
-        # 3.  CLIP.
+        # 4. CLIP.
         category_result = analyze_face_category(
             image=pil_image,
             bbox=bbox,
@@ -557,7 +619,8 @@ def process_freeze(
             prompt_categories=clip_prompt_categories,
         )
 
-        category = to_face_category(category_result["category"])
+        category_name = category_result.get("category") or DEFAULT_FACE_CATEGORY
+        category = get_category(face_categories, category_name)
         category_score = category_result["category_score"]
 
         analysis = make_analysis(
@@ -565,9 +628,8 @@ def process_freeze(
             category_result=category_result,
         )
 
-        # 4. real_identifiable — unknown,
-
-        if category == FaceCategory.real_identifiable:
+        # 5. identifiable — unknown.
+        if category.name == CATEGORY_IDENTIFIABLE:
             cluster_person, cluster_dist = find_or_create_unknown_cluster_person(
                 db=db,
                 embedding=emb,
@@ -589,51 +651,62 @@ def process_freeze(
                 category=category,
                 category_score=category_score,
                 quality=quality,
-                gender=map_gender(face, category),
+                gender=map_gender(face, category.name),
                 confidence=None,
                 analysis=analysis,
                 iteration_id=iteration_id,
             )
 
+            created += 1
+
             logging.info(
-                f"Created unknown face freeze_id={freeze.id}, "
+                f"Created unknown identifiable face freeze_id={freeze.id}, "
                 f"person_id={cluster_person.id}, "
-                f"category={category.value}:{category_score}, "
-                f"cluster_dist={distance_for_source}, quality={quality}"
+                f"category={category.name}:{category_score}, "
+                f"cluster_dist={distance_for_source}, "
+                f"quality={quality}, "
+                f"det_score={det_score}"
             )
 
-        else:
-            # 5. службові кластери
+            continue
 
-            service_person = get_or_create_service_cluster_person(
-                db=db,
-                category=category,
-            )
+        # 6. усі інші категорії — службові єдині кластери.
+        service_person = get_or_create_service_cluster_person(
+            db=db,
+            category_name=category.name,
+        )
 
-            create_embedding_and_face(
-                db=db,
-                freeze=freeze,
-                face=face,
-                emb=emb,
-                person_id=service_person.id,
-                distance=None,
-                category=category,
-                category_score=category_score,
-                quality=quality,
-                gender=FaceGender.unknown,
-                confidence=None,
-                analysis=analysis,
-                iteration_id=iteration_id,
-            )
-
-            logging.info(
-                f"Created service-category face freeze_id={freeze.id}, "
-                f"person_id={service_person.id}, "
-                f"category={category.value}:{category_score}, "
-                f"quality={quality}"
-            )
+        create_embedding_and_face(
+            db=db,
+            freeze=freeze,
+            face=face,
+            emb=emb,
+            person_id=service_person.id,
+            distance=None,
+            category=category,
+            category_score=category_score,
+            quality=quality,
+            gender=FaceGender.unknown,
+            confidence=None,
+            analysis=analysis,
+            iteration_id=iteration_id,
+        )
 
         created += 1
+
+        logging.info(
+            f"Created service-category face freeze_id={freeze.id}, "
+            f"person_id={service_person.id}, "
+            f"category={category.name}:{category_score}, "
+            f"quality={quality}, "
+            f"det_score={det_score}"
+        )
+
+    logging.info(
+        f"freeze_id={freeze.id}: created={created}, "
+        f"skipped_low_det_score={skipped_low_det_score}, "
+        f"detected_by_buffalo={len(faces)}"
+    )
 
     return created
 
@@ -647,6 +720,7 @@ def process_media(
     clip_prompt_categories,
     media: DBMedia,
     reference_embeddings,
+    face_categories: dict,
 ):
     freezes = (
         db.query(DBFreeze)
@@ -664,18 +738,23 @@ def process_media(
         IterationCreate(
             status=IterationStatus.processing,
             params={
-                "service": "detect_faces_from_freezes_v4.py",
+                "service": SERVICE_NAME,
+                "service_type": "face_detection",
+                "service_version": "v4",
                 "face_det_size": FACE_DET_SIZE,
-                "quality_mode": "numeric",
-                "category_mode": "known_first_quality_then_clip",
+                "min_det_score": MIN_DET_SCORE,
                 "dist_tolerance": DIST_TOLERANCE,
                 "step_tolerance": STEP_TOLERANCE,
                 "unknown_tolerance": UNKNOWN_TOLERANCE,
                 "low_quality_threshold": LOW_QUALITY_THRESHOLD,
                 "logic": (
-                    "detect_all -> known_match -> low_quality_service_cluster -> "
-                    "clip -> unknown_similarity_only_for_real_identifiable -> "
-                    "service_cluster_for_other_categories"
+                    "media_without_completed_iteration -> "
+                    "freeze -> buffalo_detect -> "
+                    "known_match_first -> "
+                    "drop_low_det_score_without_embedding -> "
+                    "quality -> low_quality_cluster -> "
+                    "clip -> identifiable_unknown_grouping -> "
+                    "single_service_clusters_for_other_categories"
                 ),
             },
             error_message=None,
@@ -698,6 +777,7 @@ def process_media(
                 freeze=freeze,
                 iteration_id=iteration.id,
                 reference_embeddings=reference_embeddings,
+                face_categories=face_categories,
             )
 
         update_iteration(
@@ -709,7 +789,10 @@ def process_media(
             ),
         )
 
-        logging.info(f"media_id={media.id}: faces created={total_created}")
+        logging.info(
+            f"media_id={media.id}: completed, faces created={total_created}"
+        )
+
         return total_created
 
     except Exception as e:
@@ -722,6 +805,9 @@ def process_media(
                 error_message=str(e),
             ),
         )
+
+        logging.exception(f"media_id={media.id}: error during face detection")
+
         raise
 
 
@@ -735,9 +821,10 @@ def process_all_media():
         logging.info("Loading CLIP...")
         clip_model, clip_preprocess, clip_text_features, clip_prompt_categories = get_clip()
 
+        face_categories = load_face_categories(db)
         reference_embeddings = load_reference_embeddings(db)
 
-        medias = db.query(DBMedia).order_by(DBMedia.id).all()
+        medias = get_media_for_face_detection(db)
 
         total_faces = 0
 
@@ -751,6 +838,7 @@ def process_all_media():
                 clip_prompt_categories=clip_prompt_categories,
                 media=media,
                 reference_embeddings=reference_embeddings,
+                face_categories=face_categories,
             )
 
         logging.info("--------------------------------")

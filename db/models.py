@@ -63,8 +63,8 @@ class DBSource(BASE):
     __tablename__ = "source"
 
     id = Column(Integer, primary_key=True)
-    code = Column(String, nullable=False, unique=True, index=True)
-    name = Column(String, nullable=False, index=True)
+    code = Column(String, nullable=False, index=True)
+    name = Column(String, nullable=False, unique=True, index=True)
     description = Column(String, nullable=True)
     is_active = Column(Boolean, nullable=False, server_default=text("true"))
 
@@ -132,6 +132,7 @@ class DBHistory(BASE):
 
     id = Column(Integer, primary_key=True)
     action = Column(String, nullable=False, index=True)
+    details = Column(JSONB, nullable=True)
     created_at = Column(DateTime(timezone=True), default=func.now(), nullable=False)
 
     user_id = Column(Integer, ForeignKey("user.id"), nullable=False, index=True)
@@ -142,8 +143,8 @@ class DBFaceCategory(BASE):
     __tablename__ = "face_category"
 
     id = Column(Integer, primary_key=True)
-    code = Column(String, nullable=False, unique=True, index=True)
-    name = Column(String, nullable=False, index=True)
+    code = Column(String, nullable=False, index=True)
+    name = Column(String, nullable=False, unique=True, index=True)
     description = Column(String, nullable=True)
 
     is_person = Column(Boolean, nullable=False, index=True, server_default=text("false"))

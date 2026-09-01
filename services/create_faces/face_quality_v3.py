@@ -1,7 +1,11 @@
+# services/create_faces/face_quality_v3.py
+
+import math
+
 import cv2
 
 
-GOOD_FACE_SIZE = 100
+GOOD_FACE_SIZE = 80
 GOOD_BLUR = 60
 
 MIN_ASPECT = 0.55
@@ -11,8 +15,6 @@ IDEAL_ASPECT_MAX = 1.25
 
 MIN_EYE_DIST = 4
 MIN_MOUTH_DIST = 2
-
-#THRESHOLD_QUALITY = 0.55
 
 
 def crop_face(img, bbox):
@@ -49,6 +51,9 @@ def visible_bbox_ratio(img, bbox):
 
 
 def blur_value(face_img):
+    if face_img is None or face_img.size == 0:
+        return 0.0
+
     gray = cv2.cvtColor(face_img, cv2.COLOR_BGR2GRAY)
     return cv2.Laplacian(gray, cv2.CV_64F).var()
 
@@ -108,8 +113,8 @@ def score_landmarks(face):
 
     left_eye, right_eye, nose, left_mouth, right_mouth = kps
 
-    eye_dist = abs(right_eye[0] - left_eye[0])
-    mouth_dist = abs(right_mouth[0] - left_mouth[0])
+    eye_dist = math.dist(left_eye, right_eye)
+    mouth_dist = math.dist(left_mouth, right_mouth)
 
     points = 0
     total = 4
@@ -141,10 +146,12 @@ def get_face_quality(img, face):
     bbox = face.bbox.astype(int)
 
     face_img = crop_face(img, bbox)
+
     if face_img is None:
         return 0.0, {
             "reason": "bad_crop",
             "bbox": bbox.tolist(),
+            "det_score": float(getattr(face, "det_score", 0.0) or 0.0),
         }
 
     q_size = score_size(bbox)
@@ -155,15 +162,15 @@ def get_face_quality(img, face):
 
     quality = (
         0.35 * q_size
-        + 0.1 * q_blur
+        + 0.10 * q_blur
         + 0.35 * q_visibility
-        + 0.1 * q_aspect
-        + 0.1 * q_landmarks
+        + 0.10 * q_aspect
+        + 0.10 * q_landmarks
     )
 
     details = {
         "bbox": bbox.tolist(),
-        "det_score": float(getattr(face, "det_score", 0.0)),
+        "det_score": float(getattr(face, "det_score", 0.0) or 0.0),
         "size_score": round(q_size, 4),
         "blur_score": round(q_blur, 4),
         "blur_value": round(float(blur), 4),
@@ -175,8 +182,3 @@ def get_face_quality(img, face):
     }
 
     return round(float(quality), 4), details
-
-
-#def is_good_face(img, face, threshold=THRESHOLD_QUALITY):
-#    quality, _ = get_face_quality(img, face)
-#    return quality >= threshold

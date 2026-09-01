@@ -7,7 +7,7 @@ from urllib.parse import quote_plus
 
 import requests
 
-from config import PERSONS_FOLDER, NEW_WIKI_PATH
+from services.config import PERSONS_FOLDER, NEW_WIKI_PATH
 
 
 URL = "https://www.wikidata.org/w/api.php"

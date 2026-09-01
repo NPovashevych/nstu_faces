@@ -5,7 +5,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from db.session import get_db
-from db.models import DBPerson, DBFace, DBFreeze, DBMedia
+from db.models import DBPerson, DBFace, DBFreeze, DBMedia, DBMediaDescription
 from routes.routers_classic.commons import make_image_url, make_media_url
 
 
@@ -13,7 +13,20 @@ router = APIRouter(prefix="/search-name", tags=["search by name"])
 
 
 BBOX_DRAW_SCALE = 1.10
-MEDIA_SOURCE_LABEL = "Тестовий пакет"
+
+
+def get_media_url(media: DBMedia):
+    if not media.mp4_path:
+        return None
+
+    if media.media_type.value != "video":
+        return None
+
+    try:
+        return make_media_url(media.mp4_path)
+    except ValueError:
+        return None
+
 
 
 def safe_float(value, default=None):
@@ -55,8 +68,8 @@ def normalize_bbox(bbox, scale: float = BBOX_DRAW_SCALE):
     draw_height = height * scale
 
     return {
-        "raw": [x1, y1, x2, y2],
-        "draw": {
+        "bbox": [x1, y1, x2, y2],
+        "bbox_draw": {
             "x": center_x - draw_width / 2,
             "y": center_y - draw_height / 2,
             "w": draw_width,
@@ -72,24 +85,10 @@ def get_confidence_marks(confidence):
     return "?" * int(confidence)
 
 
-def get_media_description(media: DBMedia):
-    if not media.descriptions:
-        return None
-
-    d = media.descriptions[0]
-
-    return {
-        "section": d.section,
-        "description": d.description,
-        "date": d.date,
-        "duration": d.duration,
-        "journalist": d.journalist,
-    }
-
-
 def normalize_person(person: DBPerson):
     return {
         "id": person.id,
+        "code": person.code,
         "name": person.name,
         "status": person.status.value if person.status else None,
         "q_code": person.q_code,
@@ -98,9 +97,17 @@ def normalize_person(person: DBPerson):
 
 
 def normalize_face(face: DBFace):
+    bbox_data = normalize_bbox(face.bbox)
+
     return {
         "face_id": face.id,
-        "bbox": normalize_bbox(face.bbox),
+        "bbox": bbox_data["bbox"],
+        "bbox_draw": bbox_data["bbox_draw"],
+        "category": face.face_category.name if face.face_category else None,
+        "category_group": face.face_category.code if face.face_category else None,
+        "category_score": face.category_score,
+        "quality": face.quality,
+        "gender": face.gender.value if face.gender else None,
         "confidence": face.confidence,
         "confidence_marks": get_confidence_marks(face.confidence),
         "frame_color": "green",
@@ -108,13 +115,49 @@ def normalize_face(face: DBFace):
     }
 
 
+def get_source_label(media: DBMedia):
+    if media.source:
+        return media.source.name
+
+    return None
+
+
+def normalize_media_description(media: DBMedia, description: DBMediaDescription | None):
+    duration = safe_float(media.duration, None)
+
+    if description is None:
+        return None
+
+    return {
+        "date": description.shooting_date,
+        "section": description.section,
+        "journalist": description.journalist,
+        "operators": description.operators,
+        "duration": duration,
+        "description": description.description,
+        "another_info": description.another_info,
+    }
+
+
+def load_media_descriptions_for_medias(db: Session, medias: list[DBMedia]):
+    material_ids = list({media.material_id for media in medias if media.material_id})
+
+    if not material_ids:
+        return {}
+
+    rows = db.query(DBMediaDescription).filter(DBMediaDescription.material_id.in_(material_ids)).all()
+
+    return {row.material_id: row for row in rows}
+
+
 def build_person_result(db: Session, person: DBPerson):
     faces = (
         db.query(DBFace)
         .options(
+            joinedload(DBFace.face_category),
             joinedload(DBFace.freeze)
             .joinedload(DBFreeze.media)
-            .joinedload(DBMedia.descriptions),
+            .joinedload(DBMedia.source),
         )
         .join(DBFreeze, DBFace.freeze_id == DBFreeze.id)
         .join(DBMedia, DBFreeze.media_id == DBMedia.id)
@@ -123,23 +166,40 @@ def build_person_result(db: Session, person: DBPerson):
         .all()
     )
 
+    medias_by_id = {}
+
+    for face in faces:
+        freeze = face.freeze
+        media = freeze.media
+        medias_by_id[media.id] = media
+
+    descriptions_by_material_id = load_media_descriptions_for_medias(
+        db=db,
+        medias=list(medias_by_id.values()),
+    )
+
     medias_map = {}
 
     for face in faces:
         freeze = face.freeze
         media = freeze.media
 
-        if not media.mp4_path:
-            continue
-
         if media.id not in medias_map:
+            description = descriptions_by_material_id.get(media.material_id)
+
             medias_map[media.id] = {
                 "media": {
                     "id": media.id,
-                    "name": Path(media.mp4_path).name,
-                    "source": MEDIA_SOURCE_LABEL,
-                    "url": make_media_url(media.mp4_path),
-                    "description": get_media_description(media),
+                    "material_id": media.material_id,
+                    "name": Path(media.mp4_path or media.mxf_path or "").name,
+                    "source": get_source_label(media),
+                    "url": get_media_url(media),
+                    "mxf_path": media.mxf_path,
+                    "mp4_path": media.mp4_path,
+                    "duration": safe_float(media.duration, None),
+                    "recorded_at": media.recorded_at.isoformat() if media.recorded_at else None,
+                    "uploaded_at": media.uploaded_at.isoformat() if media.uploaded_at else None,
+                    "description": normalize_media_description(media=media, description=description)
                 },
                 "summary": {
                     "frames_count": 0,
@@ -195,6 +255,7 @@ def get_person_candidates(db: Session, name: str):
     rows = (
         db.query(
             DBPerson.id.label("person_id"),
+            DBPerson.code.label("code"),
             DBPerson.name.label("name"),
             DBPerson.q_code.label("q_code"),
             DBPerson.link.label("link"),
@@ -208,6 +269,7 @@ def get_person_candidates(db: Session, name: str):
         .filter(DBPerson.name.ilike(f"%{name}%"))
         .group_by(
             DBPerson.id,
+            DBPerson.code,
             DBPerson.name,
             DBPerson.q_code,
             DBPerson.link,
@@ -221,6 +283,7 @@ def get_person_candidates(db: Session, name: str):
         {
             "person": {
                 "id": row.person_id,
+                "code": row.code,
                 "name": row.name,
                 "status": row.status.value if row.status else None,
                 "q_code": row.q_code,

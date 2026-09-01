@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote_plus
 
-from config import NEW_WIKI_PATH
+from services.config import NEW_WIKI_PATH
 from db.session import SessionLocal
 from db.models import DBPerson
 from db.enums import PersonStatus
@@ -17,7 +17,7 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler("logs/update_person_links_from_json.log", encoding="utf-8"),
+        logging.FileHandler("../logs/update_person_links_from_json.log", encoding="utf-8"),
     ],
 )
 

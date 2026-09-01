@@ -4,7 +4,10 @@ import torch
 import open_clip
 from PIL import Image
 
-from services.clip_face_categories import CLIP_FACE_CATEGORIES
+from services.create_faces.clip_face_categories import (
+    CLIP_FACE_CATEGORIES,
+    DEFAULT_FACE_CATEGORY,
+)
 
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -48,10 +51,10 @@ def prepare_text_features(model, tokenizer):
     prompts = []
     prompt_categories = []
 
-    for category, category_prompts in CLIP_FACE_CATEGORIES.items():
+    for category_name, category_prompts in CLIP_FACE_CATEGORIES.items():
         for prompt in category_prompts:
             prompts.append(prompt)
-            prompt_categories.append(category)
+            prompt_categories.append(category_name)
 
     tokens = tokenizer(prompts).to(DEVICE)
 
@@ -90,6 +93,9 @@ def crop_face_for_clip(image: Image.Image, bbox):
     x2 = min(image_w, x2 + margin_x)
     y2 = min(image_h, y2 + margin_y)
 
+    if x2 <= x1 or y2 <= y1:
+        raise ValueError(f"Invalid cropped bbox: {(x1, y1, x2, y2)}")
+
     return image.crop((x1, y1, x2, y2)).convert("RGB")
 
 
@@ -111,29 +117,29 @@ def classify_crop(
 
     category_scores = defaultdict(float)
 
-    for prob, category in zip(probs, prompt_categories):
-        category_scores[category] += prob
+    for prob, category_name in zip(probs, prompt_categories):
+        category_scores[category_name] += float(prob)
 
     category_scores = {
-        key: round(float(value), 4)
-        for key, value in category_scores.items()
+        category_name: round(float(score), 4)
+        for category_name, score in category_scores.items()
     }
 
-    best_category = max(category_scores, key=category_scores.get)
-    best_score = category_scores[best_category]
+    best_clip_category = max(category_scores, key=category_scores.get)
+    best_clip_score = category_scores[best_clip_category]
 
-    if best_score < CONFIDENT_CATEGORY_THRESHOLD:
-        final_category = "uncertain"
-        category_score = best_score
+    if best_clip_score < CONFIDENT_CATEGORY_THRESHOLD:
+        final_category = DEFAULT_FACE_CATEGORY
+        category_score = best_clip_score
     else:
-        final_category = best_category
-        category_score = best_score
+        final_category = best_clip_category
+        category_score = best_clip_score
 
     return {
         "category": final_category,
         "category_score": round(float(category_score), 4),
-        "best_clip_category": best_category,
-        "best_clip_score": round(float(best_score), 4),
+        "best_clip_category": best_clip_category,
+        "best_clip_score": round(float(best_clip_score), 4),
         "clip_scores": category_scores,
     }
 
@@ -148,12 +154,10 @@ def analyze_face_category(
 ):
     crop = crop_face_for_clip(image, bbox)
 
-    result = classify_crop(
+    return classify_crop(
         crop=crop,
         model=model,
         preprocess=preprocess,
         text_features=text_features,
         prompt_categories=prompt_categories,
     )
-
-    return result

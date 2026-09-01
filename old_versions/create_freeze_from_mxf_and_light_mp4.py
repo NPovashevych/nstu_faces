@@ -8,9 +8,9 @@ from pathlib import Path
 from scenedetect import open_video, SceneManager, ContentDetector
 from sqlalchemy.exc import IntegrityError
 
-from config import MXF_FOLDER, MP4_LIGHT_FOLDER, FREEZE_FOLDER_FROM_MXF
+from services.config import TEST_FOLDER, TEST_FREEZE_FOLDER, TEST_MP4_LIGHT_FOLDER
 from db.session import SessionLocal
-from db.enums import MediaSource, MediaType
+from db.enums import MediaType
 from crud.crud_media import get_media_by_mxf_path, create_media
 from crud.crud_freeze import create_freeze
 from schemas.schemas_media import MediaCreate
@@ -22,7 +22,7 @@ logging.basicConfig(
     format="[%(levelname)8s]: %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler("logs/create_media_and_freezes_from_mxf.log", encoding="utf-8"),
+        logging.FileHandler("../logs/create_media_and_freezes_from_test.log", encoding="utf-8"),
     ],
 )
 
@@ -173,7 +173,7 @@ def get_or_create_media(db, mxf_path: Path, mp4_path: Path, recorded_at: datetim
         return existing
 
     media_create = MediaCreate(
-        source=MediaSource.in_media,
+        source_id=1,
         media_type=MediaType.video,
         mxf_path=str(mxf_path),
         mp4_path=str(mp4_path),
@@ -194,8 +194,8 @@ def process_one_mxf(mxf_path: Path, user_id: int) -> dict:
     try:
         media_name = safe_name(mxf_path.stem)
 
-        mp4_path = Path(MP4_LIGHT_FOLDER) / f"{media_name}.mp4"
-        freeze_folder = Path(FREEZE_FOLDER_FROM_MXF) / media_name
+        mp4_path = Path(TEST_MP4_LIGHT_FOLDER) / f"{media_name}.mp4"
+        freeze_folder = Path(TEST_FREEZE_FOLDER) / media_name
 
         recorded_at = parse_recorded_at(mxf_path.stem)
 
@@ -285,7 +285,7 @@ def process_one_mxf(mxf_path: Path, user_id: int) -> dict:
 
 
 def process_mxf_folder(user_id: int = 1):
-    input_folder = Path(MXF_FOLDER)
+    input_folder = Path(TEST_FOLDER)
 
     mxf_files = sorted(
         list(input_folder.glob("*.mxf"))
