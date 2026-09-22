@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 from db.enums import EmbeddingType, PersonStatus
 from db.models import DBEmbedding, DBPerson
 
+from services.config import UNKNOWN_FAISS_INDEX_PATH, UNKNOWN_FAISS_PERSON_IDS_PATH
+
 
 DEFAULT_EMBEDDING_DIM = 512
 
@@ -37,12 +39,7 @@ class ReferenceFaceIndex:
         return int(self.index.ntotal)
 
     def build(self, db: Session):
-        rows = (
-            db.query(DBEmbedding)
-            .filter(DBEmbedding.embedding_type == EmbeddingType.reference_face)
-            .order_by(DBEmbedding.id)
-            .all()
-        )
+        rows = db.query(DBEmbedding).filter(DBEmbedding.embedding_type == EmbeddingType.reference_face).order_by(DBEmbedding.id).all()
 
         if not rows:
             logging.warning("Reference embeddings not found. Reference FAISS index is empty.")
@@ -53,7 +50,6 @@ class ReferenceFaceIndex:
 
         for row in rows:
             vector = normalize_vector(row.vector)
-
             vectors.append(vector)
             source = row.source or {}
             gender = source.get("gender", "unknown")
@@ -169,6 +165,36 @@ class UnknownFaceIndex:
         self.index.add(vector.reshape(1, -1))
         self.person_ids.append(person_id)
 
+    def load(self):
+        logging.info("Loading Unknown FAISS index from disk...")
+
+        if not UNKNOWN_FAISS_INDEX_PATH.exists():
+            raise RuntimeError(f"Unknown FAISS index file not found: {UNKNOWN_FAISS_INDEX_PATH}")
+
+        if not UNKNOWN_FAISS_PERSON_IDS_PATH.exists():
+            raise RuntimeError(f"Unknown FAISS person_ids file not found: {UNKNOWN_FAISS_PERSON_IDS_PATH}")
+
+        index = faiss.read_index(str(UNKNOWN_FAISS_INDEX_PATH))
+        person_ids = np.load(UNKNOWN_FAISS_PERSON_IDS_PATH)
+
+        if index.d != self.dimension:
+            raise RuntimeError(f"Unexpected FAISS dimension: {index.d}, expected={self.dimension}")
+
+        if index.ntotal != len(person_ids):
+            raise RuntimeError(
+                f"FAISS/person_ids count mismatch: faiss={index.ntotal}, person_ids={len(person_ids)}"
+            )
+
+        self.index = index
+        self.person_ids = person_ids.tolist()
+
+        logging.info(
+            "Unknown FAISS loaded: embeddings=%s, persons=%s, dimension=%s",
+            self.size,
+            self.person_count,
+            self.dimension,
+        )
+
 
 REFERENCE_FACE_INDEX = ReferenceFaceIndex()
 UNKNOWN_FACE_INDEX = UnknownFaceIndex()
@@ -187,10 +213,10 @@ def initialize_faiss_indexes(db: Session):
         if _FAISS_INDEXES_READY:
             return
 
-        logging.info("Building shared FAISS indexes...")
+        logging.info("Initializing shared FAISS indexes...")
 
         REFERENCE_FACE_INDEX.build(db)
-        UNKNOWN_FACE_INDEX.build(db)
+        UNKNOWN_FACE_INDEX.load()
 
         _FAISS_INDEXES_READY = True
 

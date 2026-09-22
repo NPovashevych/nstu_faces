@@ -30,7 +30,7 @@ from services.config import (
 
 from services.commons.scan_statistics import ScanStatistics
 
-from services.media.common_media_func import (
+from commons.common_scene import (
     safe_name,
     get_video_duration_and_scenes,
     extract_freeze_from_video,

@@ -4,7 +4,7 @@ import torch
 import open_clip
 from PIL import Image
 
-from services.create_faces.clip_face_categories import (
+from commons.clip_face_categories import (
     CLIP_FACE_CATEGORIES,
     DEFAULT_FACE_CATEGORY,
 )

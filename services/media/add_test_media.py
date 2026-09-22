@@ -11,7 +11,7 @@ from crud.crud_media import get_media_by_mxf_path, create_media
 from schemas.schemas_media import MediaCreate
 from services.config import TEST_FOLDER, TEST_MP4_LIGHT_FOLDER, TEST_FREEZE_FOLDER
 
-from services.media.common_media_func import (
+from commons.common_scene import (
     IMAGE_EXTENSIONS,
     safe_name,
     create_light_mp4,

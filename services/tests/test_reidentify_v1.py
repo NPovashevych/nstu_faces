@@ -9,15 +9,15 @@ from db.session import SessionLocal
 from db.enums import EmbeddingType
 from db.models import DBEmbedding, DBFace, DBFaceCategory, DBFreeze, DBPerson
 
-from services.create_faces.faiss_face_index import ReferenceFaceIndex, normalize_vector
+from services.faiss.faiss_face_index import ReferenceFaceIndex, normalize_vector
 
 
 START_FACE_ID = 1
-END_FACE_ID = 20000
+END_FACE_ID = 50000
 
 CATEGORY_IDS = [1, 2, 3, 7]
 
-MAX_MATCH_DISTANCE = 0.45
+MAX_MATCH_DISTANCE = 0.40
 
 
 logging.basicConfig(

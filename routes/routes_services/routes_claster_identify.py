@@ -9,8 +9,8 @@ from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
-from routes.routers_classic.commons import similarity_percent_from_distance, normalize, cosine_distance
-from routes.routers_classic.commons import load_reference_embeddings, make_image_url
+from commons.commons_base import similarity_percent_from_distance, normalize, cosine_distance
+from commons.commons_base import load_reference_embeddings, make_image_url
 from db.session import get_db
 from db.models import DBPerson, DBFace, DBFreeze, DBMedia, DBEmbedding, DBFaceCategory
 from schemas.schemas_request import UpdateClusterRequest, AssignToPersonRequest, MoveFacesRequest

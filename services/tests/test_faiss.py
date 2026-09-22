@@ -24,14 +24,12 @@ from db.models import (
     DBPerson,
 )
 
-from routes.routers_classic.commons import normalize
-
-from services.create_faces.face_quality_v3 import get_face_quality
-from services.create_faces.clip_face_filter_v2 import (
+from commons.face_quality_v3 import get_face_quality
+from commons.clip_face_filter_v2 import (
     get_clip,
     analyze_face_category,
 )
-from services.create_faces.clip_face_categories import (
+from commons.clip_face_categories import (
     DEFAULT_FACE_CATEGORY,
     CATEGORY_IDENTIFIABLE,
     CATEGORY_LOW_QUALITY,

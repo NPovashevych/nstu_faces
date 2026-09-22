@@ -23,8 +23,8 @@ from db.session import get_db
 from db.models import DBPerson, DBFace, DBFreeze, DBMedia, DBEmbedding
 from db.enums import PersonStatus, EmbeddingType, FaceCategory
 
-from services.create_faces.face_quality_v3 import get_face_quality
-from services.create_faces.clip_face_filter_v2 import get_clip, analyze_face_category
+from commons.face_quality_v3 import get_face_quality
+from commons.clip_face_filter_v2 import get_clip, analyze_face_category
 
 
 router = APIRouter(prefix="/search", tags=["search"])

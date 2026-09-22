@@ -20,14 +20,14 @@ from crud.crud_iteration import create_iteration, update_iteration
 
 from schemas.schemas_iteration import IterationCreate, IterationUpdate
 
-from services.create_faces.face_quality_v3 import get_face_quality
-from services.create_faces.clip_face_filter_v2 import get_clip, analyze_face_category
-from services.create_faces.clip_face_categories import DEFAULT_FACE_CATEGORY,CATEGORY_IDENTIFIABLE, CATEGORY_LOW_QUALITY
-from services.create_faces.faiss_face_index import ReferenceFaceIndex, UnknownFaceIndex, normalize_vector
+from commons.face_quality_v3 import get_face_quality
+from commons.clip_face_filter_v2 import get_clip, analyze_face_category
+from commons.clip_face_categories import DEFAULT_FACE_CATEGORY,CATEGORY_IDENTIFIABLE, CATEGORY_LOW_QUALITY
+from services.faiss.faiss_face_index import ReferenceFaceIndex, UnknownFaceIndex, normalize_vector
 
-from test_speed_add_faces import PerformanceProfiler
+from services.tests.test_speed_add_faces import PerformanceProfiler
 
-Path("../logs").mkdir(exist_ok=True)
+Path("../services/logs").mkdir(exist_ok=True)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -35,7 +35,7 @@ logging.basicConfig(
     handlers=[
         logging.StreamHandler(sys.stdout),
         logging.FileHandler(
-            "../logs/detect_faces_from_freezes_v5.log",
+            "../services/logs/detect_faces_from_freezes_v5.log",
             encoding="utf-8",
         ),
     ],

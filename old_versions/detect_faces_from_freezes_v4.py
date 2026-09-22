@@ -24,11 +24,11 @@ from schemas.schemas_face import FaceCreate
 from schemas.schemas_iteration import IterationCreate, IterationUpdate
 from schemas.schemas_person import PersonsCreate
 
-from routes.routers_classic.commons import normalize, cosine_distance
+from commons.commons_base import normalize, cosine_distance
 
-from services.create_faces.face_quality_v3 import get_face_quality
-from services.create_faces.clip_face_filter_v2 import get_clip, analyze_face_category
-from services.create_faces.clip_face_categories import DEFAULT_FACE_CATEGORY, CATEGORY_IDENTIFIABLE, CATEGORY_LOW_QUALITY
+from commons.face_quality_v3 import get_face_quality
+from commons.clip_face_filter_v2 import get_clip, analyze_face_category
+from commons.clip_face_categories import DEFAULT_FACE_CATEGORY, CATEGORY_IDENTIFIABLE, CATEGORY_LOW_QUALITY
 
 
 Path("../services/logs").mkdir(exist_ok=True)

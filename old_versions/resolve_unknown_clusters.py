@@ -13,14 +13,14 @@ from db.enums import PersonStatus, EmbeddingType
 
 from routes.routers_classic import normalize, cosine_distance
 
-Path("logs").mkdir(exist_ok=True)
+Path("../services/logs").mkdir(exist_ok=True)
 
 logging.basicConfig(
     level=logging.INFO,
     format="[%(levelname)8s]: %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler("logs/resolve_unknown_clusters.log", encoding="utf-8"),
+        logging.FileHandler("../services/logs/resolve_unknown_clusters.log", encoding="utf-8"),
     ],
 )
 

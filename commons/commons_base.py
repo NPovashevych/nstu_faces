@@ -7,13 +7,7 @@ from PIL import Image
 import cv2
 from sqlalchemy.orm import Session
 
-from services.config import (
-    TEST_MP4_LIGHT_FOLDER,
-    TEST_FREEZE_FOLDER,
-    USER_UPLOAD_FOLDER,
-    INTVNEWS_FREEZE_FOLDER,
-    PROXY_NEWS_FOLDER,
-)
+from services.config import TEST_MP4_LIGHT_FOLDER, TEST_FREEZE_FOLDER, USER_UPLOAD_FOLDER, INTVNEWS_FREEZE_FOLDER, PROXY_NEWS_FOLDER, TEMPORARY_FREEZES_FOLDER
 from db.enums import EmbeddingType
 from db.models import DBPerson, DBEmbedding
 
@@ -54,6 +48,13 @@ def make_image_url(freeze_path: str | None):
     try:
         relative_path = path.relative_to(Path(USER_UPLOAD_FOLDER))
         return f"/media-user-upload/{relative_path.as_posix()}"
+    except ValueError:
+        pass
+
+    # Фото, завантажені користувачем з youtube
+    try:
+        relative_path = path.relative_to(Path(TEMPORARY_FREEZES_FOLDER))
+        return f"/media-youtube-upload/{relative_path.as_posix()}"
     except ValueError:
         pass
 

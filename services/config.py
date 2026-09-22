@@ -37,6 +37,17 @@ HIRES_DIGITAL_DUPLICATE_FILE = Path(r"C:\faces\baza\hires_digital_duplicates.jso
 
 # фрізи
 INTVNEWS_FREEZE_FOLDER = Path(r"D:\freezes\freeze_intvnews_arc")
+TEMPORARY_FREEZES_FOLDER = Path(r"Z:\temporary_freeze")
+
+
+# faiss
+FAISS_FOLDER = Path(r"D:\data\Faiss")
+UNKNOWN_FAISS_INDEX_PATH = FAISS_FOLDER / "unknown_faces.faiss"
+UNKNOWN_FAISS_PERSON_IDS_PATH = FAISS_FOLDER / "unknown_person_ids.npy"
+
+# реідентифікація
+REVIEW_JSON_FILE = Path(r"C:\faces\baza\auto_reidentify_review.json")
+
 
 
 # не використовується

@@ -19,7 +19,7 @@ from db.session import SessionLocal
 from schemas.schemas_freeze import FreezeCreate
 from schemas.schemas_media import MediaCreate
 from services.config import CSV_FOLDER, HIRES_INTVNEWS_CATALOG, INTVNEWS_FREEZE_FOLDER, PROXY_INTVNEWS_CATALOG, TEST_MP4_LIGHT_FOLDER
-from services.media.common_media_func import create_light_mp4, extract_freeze_from_video, get_video_duration_and_scenes
+from commons.common_scene import create_light_mp4, extract_freeze_from_video, get_video_duration_and_scenes
 
 
 SOURCE_ID = 2

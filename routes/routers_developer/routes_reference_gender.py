@@ -2,6 +2,7 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from security import require_api_key
 from io import BytesIO
 
 from PIL import Image
@@ -16,7 +17,7 @@ from db.models import DBEmbedding, DBPerson
 
 
 router = APIRouter(prefix="/developer/reference-gender", tags=["developer reference gender"])
-
+# router = APIRouter(prefix="/developer/reference-gender", tags=["developer reference gender"], dependencies=[Depends(require_api_key)])
 REFERENCE_PREVIEW_MAX_SIZE = 500
 REFERENCE_PREVIEW_JPEG_QUALITY = 75
 

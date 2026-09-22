@@ -5,7 +5,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from db.session import get_db
-from routes.routers_classic.commons import make_image_url
+from commons.commons_base import make_image_url
 from db.models import DBMedia, DBFreeze, DBFace, DBMediaDescription
 from db.enums import PersonStatus
 
