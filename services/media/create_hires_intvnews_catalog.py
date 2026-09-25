@@ -13,7 +13,7 @@ from services.config import (
     HIRES_INTVNEWS_DUPLICATE_FILE,
     HIRES_DIGITAL_DUPLICATE_FILE,
 )
-from services.commons.scan_statistics import ScanStatistics
+from services.media.scan_statistics import ScanStatistics
 
 
 # ----------------------------------------------------------------------

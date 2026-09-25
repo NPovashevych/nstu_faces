@@ -107,9 +107,7 @@ def score_landmarks(face):
     kps = getattr(face, "kps", None)
 
     if kps is None or len(kps) < 5:
-        return 0.0, {
-            "has_kps": False,
-        }
+        return 0.0, {"has_kps": False}
 
     left_eye, right_eye, nose, left_mouth, right_mouth = kps
 

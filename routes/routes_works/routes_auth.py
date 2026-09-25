@@ -7,7 +7,7 @@ from db.session import get_db
 from db.models import DBUser
 from crud.crud_history import log_history
 
-from routes.routes_services.history_action import ACTION_AUTH_LOGIN
+from routes.routes_works.history_action import ACTION_AUTH_LOGIN
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 

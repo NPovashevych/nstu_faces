@@ -1,5 +1,4 @@
 import os
-import re
 import sys
 import json
 import logging
@@ -9,7 +8,6 @@ from urllib.parse import quote_plus
 
 import cv2
 import numpy as np
-from insightface.app import FaceAnalysis
 from sqlalchemy.orm import Session
 
 from services.config import PERSONS_FOLDER, NEW_WIKI_PATH
@@ -18,15 +16,14 @@ from db.session import SessionLocal
 from db.enums import PersonStatus, EmbeddingType
 from db.models import DBEmbedding
 
-from crud.crud_person import (
-    get_person_by_code,
-    get_person_by_qcode,
-    create_person,
-)
+from crud.crud_person import get_person_by_code, get_person_by_qcode, create_person
 from crud.crud_embedding import create_embedding
 
 from schemas.schemas_person import PersonsCreate
 from schemas.schemas_embedding import EmbeddingCreate
+
+from commons.common_model import get_insightface
+from commons.commons_base import cosine_similarity, make_person_code, normalize_vector, parse_person_folder_name
 
 
 os.environ["ORT_LOGGING_LEVEL"] = "3"
@@ -55,7 +52,6 @@ DUPLICATE_SIMILARITY = 0.98
 
 MAX_DIST_FROM_MEAN = 0.50
 MAX_PAIRWISE_DIST = 0.72
-_INSIGHTFACE_CACHE = None
 
 
 def load_people_db(path: Path) -> dict:
@@ -65,46 +61,6 @@ def load_people_db(path: Path) -> dict:
 
     with path.open("r", encoding="utf-8") as f:
         return json.load(f)
-
-
-def load_insightface():
-    app = FaceAnalysis(
-        name="buffalo_l",
-        providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
-    )
-    app.prepare(ctx_id=0, det_size=(640, 640))
-    return app
-
-
-def get_insightface():
-    global _INSIGHTFACE_CACHE
-
-    if _INSIGHTFACE_CACHE is None:
-        _INSIGHTFACE_CACHE = load_insightface()
-
-    return _INSIGHTFACE_CACHE
-
-
-def parse_name_qcode(folder_name: str):
-    folder_name = folder_name.strip()
-
-    match = re.search(r"\((Q\d+)\)\s*$", folder_name)
-    if match:
-        q_code = match.group(1)
-        name = folder_name[:match.start()].strip()
-        return name, q_code
-
-    return folder_name, None
-
-
-def make_person_code(name: str, q_code: str | None):
-    if q_code:
-        return q_code.lower()
-
-    code = name.lower().strip()
-    code = re.sub(r"\s+", "_", code)
-    code = re.sub(r"[^\wа-яА-ЯіїєґІЇЄҐ_()-]", "", code)
-    return code
 
 
 def is_unknown_name(name: str) -> bool:
@@ -139,26 +95,9 @@ def get_person_link(name: str, q_code: str | None, people_db: dict):
     return get_google_search_link(name)
 
 
-# def get_person_name_from_db_or_folder(folder_name: str, q_code: str | None, people_db: dict):
-#     parsed_name, _ = parse_name_qcode(folder_name)
-#
-#     if q_code and q_code in people_db:
-#         return people_db[q_code].get("name") or parsed_name
-#
-#     return parsed_name
-
-
 def get_person_name_from_db_or_folder(folder_name: str, q_code: str | None, people_db: dict):
-    parsed_name, _ = parse_name_qcode(folder_name)
+    parsed_name, _ = parse_person_folder_name(folder_name)
     return parsed_name
-
-
-def cosine_similarity(a, b):
-    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
-
-
-def normalize_embedding(embedding):
-    return embedding / (np.linalg.norm(embedding) + 1e-8)
 
 
 def get_existing_reference_gender(existing_embeddings):
@@ -206,10 +145,7 @@ def get_gender_consensus(genders):
 
 def get_embedding(model, image_path: Path):
     try:
-        cv_img = cv2.imdecode(
-            np.fromfile(str(image_path), dtype=np.uint8),
-            cv2.IMREAD_COLOR,
-        )
+        cv_img = cv2.imdecode(np.fromfile(str(image_path), dtype=np.uint8), cv2.IMREAD_COLOR)
 
         if cv_img is None:
             logging.info(f"Фото {image_path} не зміг прочитати OpenCV.")
@@ -238,10 +174,7 @@ def get_embedding(model, image_path: Path):
         logging.info(f"На фото {image_path} відсутнє обличчя")
         return None
 
-    face = max(
-        faces,
-        key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]),
-    )
+    face = max(faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
 
     gender = getattr(face, "gender", None)
 
@@ -282,14 +215,8 @@ def get_embedding_file_name(db_embedding: DBEmbedding):
 
 
 def sync_face_database(db: Session, person_folder: Path, db_person):
-    existing_files = {
-        photo.name
-        for photo in person_folder.iterdir()
-        if photo.is_file()
-    }
-
+    existing_files = {photo.name for photo in person_folder.iterdir() if photo.is_file()}
     db_embeddings = get_existing_reference_embeddings(db, db_person.id)
-
     kept_embeddings = []
 
     for db_embedding in db_embeddings:
@@ -298,13 +225,10 @@ def sync_face_database(db: Session, person_folder: Path, db_person):
         if file_name in existing_files:
             kept_embeddings.append(db_embedding)
         else:
-            logging.info(
-                f"{person_folder.name}/{file_name} — embedding видалено з БД, бо файл відсутній."
-            )
+            logging.info(f"{person_folder.name}/{file_name} — embedding видалено з БД, бо файл відсутній.")
             db.delete(db_embedding)
 
     db.commit()
-
     return kept_embeddings
 
 
@@ -323,10 +247,10 @@ def is_one_person(encodings, file_names):
     if len(encodings) < 2:
         return True, []
 
-    encodings = [normalize_embedding(enc) for enc in encodings]
+    encodings = [normalize_vector(enc) for enc in encodings]
 
     mean_enc = np.mean(encodings, axis=0)
-    mean_enc = normalize_embedding(mean_enc)
+    mean_enc = normalize_vector(mean_enc)
 
     false_photos = []
 
@@ -354,7 +278,7 @@ def is_one_person(encodings, file_names):
 def get_or_create_person(db: Session, person_folder: Path, people_db: dict):
     folder_name = person_folder.name
 
-    parsed_name, q_code = parse_name_qcode(folder_name)
+    _, q_code = parse_person_folder_name(folder_name)
 
     person_name = get_person_name_from_db_or_folder(folder_name, q_code, people_db)
     code = make_person_code(person_name, q_code)

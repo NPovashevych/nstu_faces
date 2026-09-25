@@ -8,20 +8,10 @@ from db.enums import EmbeddingType, PersonStatus
 from db.models import DBEmbedding, DBPerson
 
 from services.config import UNKNOWN_FAISS_INDEX_PATH, UNKNOWN_FAISS_PERSON_IDS_PATH
+from commons.commons_base import normalize_vector
 
 
 DEFAULT_EMBEDDING_DIM = 512
-
-
-def normalize_vector(vector) -> np.ndarray:
-    vector = np.asarray(vector, dtype=np.float32)
-
-    norm = np.linalg.norm(vector)
-
-    if norm == 0:
-        return vector
-
-    return vector / norm
 
 
 class ReferenceFaceIndex:

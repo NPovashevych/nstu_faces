@@ -18,7 +18,7 @@ from services.config import (
     PROXY_DIGITAL_DUPLICATE_FILE,
     GARBAGE_FOLDER_NAMES,
 )
-from services.commons.scan_statistics import ScanStatistics
+from services.media.scan_statistics import ScanStatistics
 
 
 logging.basicConfig(

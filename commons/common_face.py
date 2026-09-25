@@ -3,7 +3,6 @@ from time import perf_counter
 
 import cv2
 from PIL import Image
-from insightface.app import FaceAnalysis
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -13,45 +12,17 @@ from db.models import DBEmbedding, DBFace, DBFaceCategory, DBFreeze, DBPerson
 from crud.crud_face import get_faces_by_freeze
 
 from commons.face_quality_v3 import get_face_quality
-from commons.clip_face_filter_v2 import get_clip, analyze_face_category
+from commons.clip_face_filter_v2 import analyze_face_category
 from commons.clip_face_categories import DEFAULT_FACE_CATEGORY, CATEGORY_IDENTIFIABLE, CATEGORY_LOW_QUALITY
-from services.faiss.faiss_face_index import UnknownFaceIndex, normalize_vector
+from services.faiss.faiss_face_index import UnknownFaceIndex
+from commons.commons_base import normalize_vector
 
 
-FACE_DET_SIZE = 640
 MIN_DET_SCORE = 0.60
 DIST_TOLERANCE = 0.45
 STEP_TOLERANCE = 0.055
 UNKNOWN_TOLERANCE = 0.55
 LOW_QUALITY_THRESHOLD = 0.60
-
-
-_INSIGHTFACE_CACHE = None
-_CLIP_CACHE = None
-
-
-def load_insightface():
-    app = FaceAnalysis(name="buffalo_l", providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
-    app.prepare(ctx_id=0, det_size=(FACE_DET_SIZE, FACE_DET_SIZE))
-    return app
-
-
-def get_insightface():
-    global _INSIGHTFACE_CACHE
-
-    if _INSIGHTFACE_CACHE is None:
-        _INSIGHTFACE_CACHE = load_insightface()
-
-    return _INSIGHTFACE_CACHE
-
-
-def get_clip_cached():
-    global _CLIP_CACHE
-
-    if _CLIP_CACHE is None:
-        _CLIP_CACHE = get_clip()
-
-    return _CLIP_CACHE
 
 
 def load_face_categories(db: Session):

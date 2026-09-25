@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 
-from services.candidates.candidate_service import refresh_candidate_cache
+from routes.additional.candidates import refresh_candidate_cache
 
 
 router = APIRouter(prefix="/developer/candidates", tags=["developer refresh candidate cache"])

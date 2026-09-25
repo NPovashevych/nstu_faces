@@ -3,13 +3,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from routes.routers_classic import routes_user
-from routes.routes_services import routes_search_for_name, routes_auth
-from routes.routes_services import routes_claster_identify
-from routes.routes_services import routes_detected_media_faiss_v2
-from routes.routes_services import routes_search_by_photo_faiss_v2
-from routes.routes_services import routes_inspect_media_v3
-from routes.routes_services import routes_identify_for_name
-from routes.routes_services import routes_candidates
+from routes.routes_works import routes_search_for_name, routes_auth
+from routes.routes_works import routes_claster_identify
+from routes.routes_works import routes_detected_media_faiss_v2
+from routes.routes_works import routes_search_by_photo_faiss_v2
+from routes.routes_works import routes_inspect_media_v3
+from routes.routes_works import routes_identify_for_name
+from routes.routes_works import routes_candidates
 from routes.routers_developer import routes_reference_gender, routes_candidates_refresh
 
 from services.config import TEST_FREEZE_FOLDER, TEST_MP4_LIGHT_FOLDER, USER_UPLOAD_FOLDER, INTVNEWS_FREEZE_FOLDER, PROXY_NEWS_FOLDER

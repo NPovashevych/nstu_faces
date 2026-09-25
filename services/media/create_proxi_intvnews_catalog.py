@@ -13,7 +13,7 @@ from services.config import (
     PROXY_INTVNEWS_DUPLICATE_FILE,
     PROXY_DIGITAL_DUPLICATE_FILE,
 )
-from services.commons.scan_statistics import ScanStatistics
+from services.media.scan_statistics import ScanStatistics
 
 
 # ----------------------------------------------------------------------

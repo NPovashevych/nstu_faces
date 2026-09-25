@@ -1,4 +1,4 @@
-# routes_services/history_action.py
+# routes_works/history_action.py
 
 ACTION_AUTH_LOGIN = "auth.login"
 ACTION_AUTH_LOGOUT = "auth.logout"

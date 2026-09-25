@@ -9,6 +9,7 @@ from db.models import DBEmbedding, DBPerson
 from db.session import SessionLocal
 
 from services.config import UNKNOWN_FAISS_INDEX_PATH, UNKNOWN_FAISS_PERSON_IDS_PATH
+from commons.commons_base import normalize_vector
 
 
 DEFAULT_EMBEDDING_DIM = 512
@@ -19,17 +20,6 @@ logging.basicConfig(
     level=logging.INFO,
     format="[%(levelname)8s]: %(message)s",
 )
-
-
-def normalize_vector(vector) -> np.ndarray:
-    vector = np.asarray(vector, dtype=np.float32)
-
-    norm = np.linalg.norm(vector)
-
-    if norm == 0:
-        return vector
-
-    return vector / norm
 
 
 def format_seconds(seconds: float) -> str:

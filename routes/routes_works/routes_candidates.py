@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from db.models import DBUser
 from db.session import get_db
-from services.candidates.candidate_service import get_active_candidate, take_candidate, add_candidate_photo, delete_candidate_photo, save_candidate, skip_candidate, release_candidate
+from routes.additional.candidates import get_active_candidate, take_candidate, add_candidate_photo, delete_candidate_photo, save_candidate, skip_candidate, release_candidate
 from routes.classes.candidates import CandidateSaveRequest,CandidateUserRequest, CandidateSkipRequest, CandidateCancelRequest
 
 router = APIRouter(prefix="/candidates", tags=["candidates"])

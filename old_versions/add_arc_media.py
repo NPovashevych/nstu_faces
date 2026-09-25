@@ -28,7 +28,7 @@ from services.config import (
     INTVNEWS_FREEZE_FOLDER,
 )
 
-from services.commons.scan_statistics import ScanStatistics
+from services.media.scan_statistics import ScanStatistics
 
 from commons.common_scene import (
     safe_name,
