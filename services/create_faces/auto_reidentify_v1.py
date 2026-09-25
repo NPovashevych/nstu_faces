@@ -9,7 +9,7 @@ import numpy as np
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
-from db.enums import EmbeddingType
+from db.enums import EmbeddingType, PersonStatus
 from db.models import DBEmbedding, DBFace, DBPerson
 from db.session import SessionLocal
 from services.faiss.faiss_face_index import ReferenceFaceIndex, normalize_vector
@@ -55,14 +55,13 @@ def get_candidate_clusters(db: Session):
             DBFace.id <= END_FACE_ID,
             DBFace.category_id.in_(CATEGORY_IDS),
             DBEmbedding.embedding_type == EmbeddingType.detected_face,
+            DBPerson.status == PersonStatus.unknown,
             ~DBFace.person_id.in_(reference_person_ids),
-            DBPerson.name.ilike("unknown_cluster_%"),
-        )
+            DBPerson.name.ilike("unknown_cluster_%"))
         .distinct()
         .order_by(DBPerson.id)
         .all()
     )
-
 
 def get_cluster_faces_batch(db: Session, person_id: int, last_face_id: int):
     return (
@@ -354,6 +353,9 @@ def update_automatic_cluster(db: Session, item: dict):
             face.confidence = get_confidence(distance)
             embedding.person_id = reference_person_id
 
+            source = dict(embedding.source or {})
+            source["distance"] = round(float(distance), 4)
+            embedding.source = source
             updated_faces += 1
             updated_embeddings += 1
 

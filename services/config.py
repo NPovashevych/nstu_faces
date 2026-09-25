@@ -4,6 +4,9 @@ from pathlib import Path
 # еталони
 PERSONS_FOLDER = Path(r"D:\data\Persons")
 NEW_WIKI_PATH = Path(r"C:\faces\baza\parsing_wikipedia.json")
+START_CANDIDATE_FOLDER = Path(r"Z:\Persons search")
+SKIPPED_CANDIDATE_FOLDER = Path(r"Z:\Skipped Persons")
+FINISH_CANDIDATE_FOLDER = Path(r"D:\data\Candidates")
 
 # медіа для тестування - відео + фото
 TEST_MP4_LIGHT_FOLDER = Path(r"D:\faces\baza\test_mp4_light")
@@ -23,8 +26,9 @@ PROXY_DIGITAL_FOLDER = Path(r"Y:\Digital")
 # опис медіа
 CSV_FOLDER = Path(r"D:\FirebirdData\backups\inTVNews_UA1_2026-06-12_08-47")
 
-# статистика по каталогам
+# статистика
 INTVNEWS_STATISTIC = Path(r"C:\faces\baza\intvnews_statistic.csv")
+REFERENSE_STATISTIC = Path(r"C:\faces\baza\reference_statistic.xlsx")
 
 # архів новин і діджитал
 HIRES_NEWS_FOLDER = Path(r"V:/")

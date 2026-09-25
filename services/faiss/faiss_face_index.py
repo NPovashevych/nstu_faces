@@ -39,7 +39,11 @@ class ReferenceFaceIndex:
         return int(self.index.ntotal)
 
     def build(self, db: Session):
-        rows = db.query(DBEmbedding).filter(DBEmbedding.embedding_type == EmbeddingType.reference_face).order_by(DBEmbedding.id).all()
+        rows = db.query(DBEmbedding).join(DBPerson, DBEmbedding.person_id == DBPerson.id).filter(
+            DBEmbedding.embedding_type == EmbeddingType.reference_face,
+            DBEmbedding.vector.isnot(None),
+            DBPerson.status.in_([PersonStatus.public, PersonStatus.non_public]),
+        ).order_by(DBEmbedding.id).all()
 
         if not rows:
             logging.warning("Reference embeddings not found. Reference FAISS index is empty.")
