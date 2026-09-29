@@ -20,3 +20,8 @@ class CandidateSkipRequest(BaseModel):
 class CandidateCancelRequest(BaseModel):
     user_id: int
     candidate_key: str
+
+
+class CandidateCheckRequest(BaseModel):
+    user_id: int
+    candidate_key: str

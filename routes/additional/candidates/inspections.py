@@ -47,6 +47,7 @@ def check_candidate_photo(model, image_path: Path):
         "blur": None,
         "face_count": 0,
         "embedding": None,
+        "distance_from_mean": None,
         "warnings": [],
     }
 
@@ -127,6 +128,9 @@ def check_same_person(valid_photos):
     for photo in valid_photos:
         similarity = cosine_similarity(photo["embedding"], mean_embedding)
         distance = 1 - similarity
+
+        photo["distance_from_mean"] = round(float(distance), 4)
+
         if distance > MAX_DIST_FROM_MEAN:
             warnings.append({
                 "type": "far_from_mean",

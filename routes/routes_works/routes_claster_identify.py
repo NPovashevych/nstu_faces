@@ -9,7 +9,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
-from commons.commons_base import similarity_percent_from_distance, normalize, cosine_distance
+from commons.commons_base import similarity_percent_from_distance, cosine_distance, normalize_vector
 from commons.commons_base import load_reference_embeddings, make_image_url
 from db.session import get_db
 from db.models import DBPerson, DBFace, DBFreeze, DBMedia, DBEmbedding, DBFaceCategory
@@ -405,7 +405,7 @@ def find_nearest_known(face_embedding: Optional[DBEmbedding], reference_embeddin
     if not face_embedding.vector:
         return None
 
-    emb = normalize(np.array(face_embedding.vector, dtype=np.float32))
+    emb = normalize_vector(np.array(face_embedding.vector, dtype=np.float32))
 
     best = None
     best_dist = float("inf")

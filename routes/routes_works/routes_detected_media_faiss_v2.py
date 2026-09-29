@@ -12,7 +12,8 @@ from sqlalchemy.orm import Session
 from db.models import DBPerson
 from db.session import get_db
 
-from commons.common_face import analyze_faces, get_clip_cached, get_insightface, load_face_categories
+from commons.common_face import analyze_faces, load_face_categories
+from commons.common_model import get_clip, get_insightface
 from commons.common_scene import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS, extract_freeze_from_video, get_video_duration_and_scenes
 from commons.common_search import get_confidence_marks, normalize_bbox, normalize_person
 from services.faiss.faiss_face_index import REFERENCE_FACE_INDEX, UNKNOWN_FACE_INDEX, ensure_faiss_indexes
@@ -133,7 +134,7 @@ def normalize_detected_face(db: Session, result: dict):
 
 def prepare_face_analysis(db: Session):
     face_model = get_insightface()
-    clip_model, clip_preprocess, clip_text_features, clip_prompt_categories = get_clip_cached()
+    clip_model, clip_preprocess, clip_text_features, clip_prompt_categories = get_clip()
 
     ensure_faiss_indexes(db)
     face_categories = load_face_categories(db)

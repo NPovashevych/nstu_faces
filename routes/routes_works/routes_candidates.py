@@ -3,8 +3,11 @@ from sqlalchemy.orm import Session
 
 from db.models import DBUser
 from db.session import get_db
-from routes.additional.candidates import get_active_candidate, take_candidate, add_candidate_photo, delete_candidate_photo, save_candidate, skip_candidate, release_candidate
-from routes.classes.candidates import CandidateSaveRequest,CandidateUserRequest, CandidateSkipRequest, CandidateCancelRequest
+from routes.additional.candidates.candidate_service import get_active_candidate, take_candidate, add_candidate_photo, delete_candidate_photo
+from routes.additional.candidates.candidate_service import save_candidate, skip_candidate, release_candidate
+from routes.additional.candidates.candidate_service import touch_candidate, get_candidate_temp_folder
+from routes.additional.candidates.inspections import check_candidate_folder
+from routes.classes.candidates import CandidateSaveRequest, CandidateUserRequest, CandidateSkipRequest, CandidateCancelRequest, CandidateCheckRequest
 
 router = APIRouter(prefix="/candidates", tags=["candidates"])
 
@@ -168,4 +171,28 @@ def cancel_current_candidate(payload: CandidateCancelRequest, db: Session = Depe
     return {
         "status": "cancelled",
         "candidate_key": payload.candidate_key,
+    }
+
+
+@router.post("/check")
+def check_current_candidate(payload: CandidateCheckRequest, db: Session = Depends(get_db)):
+    user = get_candidate_user(db, payload.user_id)
+
+    if not touch_candidate(user.id, payload.candidate_key):
+        raise HTTPException(status_code=400, detail="Candidate is not locked by this user")
+    candidate_folder = get_candidate_temp_folder(user.id, payload.candidate_key)
+
+    if not candidate_folder.exists() or not candidate_folder.is_dir():
+        raise HTTPException(status_code=404, detail="Candidate temporary folder not found")
+
+    try:
+        result = check_candidate_folder(candidate_folder)
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Cannot check candidate: {e}")
+
+    return {
+        "status": "ok",
+        "candidate_key": payload.candidate_key,
+        "check": result,
     }
