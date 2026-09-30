@@ -1,28 +1,20 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 
-from db.models import DBUser
 from db.session import get_db
 from routes.additional.candidates.candidate_service import get_active_candidate, take_candidate, add_candidate_photo, delete_candidate_photo
 from routes.additional.candidates.candidate_service import save_candidate, skip_candidate, release_candidate
 from routes.additional.candidates.candidate_service import touch_candidate, get_candidate_temp_folder
-from routes.additional.candidates.inspections import check_candidate_folder
+from routes.additional.image_inspections import check_image_folder
+from routes.additional.user_services import get_user
 from routes.classes.candidates import CandidateSaveRequest, CandidateUserRequest, CandidateSkipRequest, CandidateCancelRequest, CandidateCheckRequest
 
 router = APIRouter(prefix="/candidates", tags=["candidates"])
 
 
-def get_candidate_user(db: Session, user_id: int) -> DBUser:
-    user = db.query(DBUser).filter(DBUser.id == user_id).first()
-
-    if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
-    return user
-
-
 @router.get("/active")
 def active_candidate(user_id: int, db: Session = Depends(get_db)):
-    user = get_candidate_user(db, user_id)
+    user = get_user(db, user_id)
 
     try:
         candidate = get_active_candidate(user.id)
@@ -38,7 +30,7 @@ def active_candidate(user_id: int, db: Session = Depends(get_db)):
 
 @router.post("/take")
 def take_next_candidate(payload: CandidateUserRequest, db: Session = Depends(get_db)):
-    user = get_candidate_user(db, payload.user_id)
+    user = get_user(db, payload.user_id)
     try:
         candidate = take_candidate(user.id)
 
@@ -63,7 +55,7 @@ def take_next_candidate(payload: CandidateUserRequest, db: Session = Depends(get
 
 @router.post("/photo")
 async def upload_candidate_photo(user_id: int = Form(...), candidate_key: str = Form(...), photo: UploadFile = File(...), db: Session = Depends(get_db)):
-    user = get_candidate_user(db, user_id)
+    user = get_user(db, user_id)
 
     if not photo.filename:
         raise HTTPException(status_code=400, detail="File name is empty")
@@ -98,7 +90,7 @@ async def upload_candidate_photo(user_id: int = Form(...), candidate_key: str = 
 
 @router.delete("/photo")
 def remove_candidate_photo(user_id: int, candidate_key: str, file_name: str, db: Session = Depends(get_db)):
-    user = get_candidate_user(db, user_id)
+    user = get_user(db, user_id)
 
     try:
         candidate = delete_candidate_photo(user_id=user.id, candidate_key=candidate_key, file_name=file_name)
@@ -120,7 +112,7 @@ def remove_candidate_photo(user_id: int, candidate_key: str, file_name: str, db:
 
 @router.post("/save")
 def save_current_candidate(payload: CandidateSaveRequest, db: Session = Depends(get_db)):
-    user = get_candidate_user(db, payload.user_id)
+    user = get_user(db, payload.user_id)
     try:
         result = save_candidate(user_id=user.id, user_name=user.name, candidate_key=payload.candidate_key, final_name=payload.final_name, category=payload.category)
 
@@ -140,7 +132,7 @@ def save_current_candidate(payload: CandidateSaveRequest, db: Session = Depends(
 
 @router.post("/skip")
 def skip_current_candidate(payload: CandidateSkipRequest, db: Session = Depends(get_db)):
-    user = get_candidate_user(db, payload.user_id)
+    user = get_user(db, payload.user_id)
     try:
         result = skip_candidate(user_id=user.id, user_name=user.name, candidate_key=payload.candidate_key)
 
@@ -161,7 +153,7 @@ def skip_current_candidate(payload: CandidateSkipRequest, db: Session = Depends(
 
 @router.post("/cancel")
 def cancel_current_candidate(payload: CandidateCancelRequest, db: Session = Depends(get_db)):
-    user = get_candidate_user(db, payload.user_id)
+    user = get_user(db, payload.user_id)
 
     released = release_candidate(user_id=user.id, candidate_key=payload.candidate_key)
 
@@ -176,7 +168,7 @@ def cancel_current_candidate(payload: CandidateCancelRequest, db: Session = Depe
 
 @router.post("/check")
 def check_current_candidate(payload: CandidateCheckRequest, db: Session = Depends(get_db)):
-    user = get_candidate_user(db, payload.user_id)
+    user = get_user(db, payload.user_id)
 
     if not touch_candidate(user.id, payload.candidate_key):
         raise HTTPException(status_code=400, detail="Candidate is not locked by this user")
@@ -186,7 +178,7 @@ def check_current_candidate(payload: CandidateCheckRequest, db: Session = Depend
         raise HTTPException(status_code=404, detail="Candidate temporary folder not found")
 
     try:
-        result = check_candidate_folder(candidate_folder)
+        result = check_image_folder(candidate_folder)
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Cannot check candidate: {e}")

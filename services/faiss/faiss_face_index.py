@@ -51,7 +51,7 @@ class ReferenceFaceIndex:
             if gender not in {"male", "female", "unknown"}:
                 gender = "unknown"
 
-            metadata.append({"embedding_id": row.id, "person_id": row.person_id, "gender": gender})
+            metadata.append({"embedding_id": row.id, "person_id": row.person_id, "person_name": row.person.name, "q_code": row.person.q_code, "gender": gender})
 
         matrix = np.vstack(vectors).astype(np.float32)
 

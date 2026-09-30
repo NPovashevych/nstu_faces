@@ -7,11 +7,10 @@ from pathlib import Path
 from unidecode import unidecode
 
 from services.config import START_CANDIDATE_FOLDER, TEMPORARY_FREEZES_FOLDER, FINISH_CANDIDATE_FOLDER, SKIPPED_CANDIDATE_FOLDER
-
+from routes.additional.image_services import get_images, add_photo, delete_photo
 
 
 CANDIDATE_TEMP_FOLDER = TEMPORARY_FREEZES_FOLDER / "candidates"
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 LOCK_TIMEOUT = timedelta(hours=2)
 MAX_CANDIDATE_PHOTOS = 12
 
@@ -58,20 +57,10 @@ def get_candidate_temp_folder(user_id: int, candidate_key: str) -> Path:
     return CANDIDATE_TEMP_FOLDER / str(user_id) / candidate_key
 
 
-def get_candidate_images(folder: Path) -> list[Path]:
-    if not folder.exists() or not folder.is_dir():
-        return []
-
-    return sorted(
-        [file_path for file_path in folder.iterdir() if file_path.is_file() and file_path.suffix.lower() in IMAGE_EXTENSIONS],
-        key=lambda path: path.name.lower()
-    )
-
-
 def candidate_to_dict(candidate_key: str, user_id: int) -> dict:
     source_folder = get_candidate_source_folder(candidate_key)
     temp_folder = get_candidate_temp_folder(user_id, candidate_key)
-    temp_images = get_candidate_images(temp_folder)
+    temp_images = get_images(temp_folder)
 
     photos = []
 
@@ -101,7 +90,7 @@ def prepare_candidate_temp(user_id: int, candidate_key: str) -> Path:
 
     temp_folder.mkdir(parents=True, exist_ok=True)
 
-    for source_image in get_candidate_images(source_folder):
+    for source_image in get_images(source_folder):
         destination = temp_folder / source_image.name
         shutil.copy2(source_image, destination)
 
@@ -276,37 +265,7 @@ def take_candidate(user_id: int) -> dict | None:
     return candidate_to_dict(candidate_key, user_id)
 
 
-def get_free_photo_name(temp_folder: Path, original_file_name: str) -> str: # тілька для temporary-папка
-    original_path = Path(original_file_name)
-
-    stem = original_path.stem.strip() or "photo"
-    suffix = original_path.suffix.lower()
-
-    candidate_name = f"{stem}{suffix}"
-
-    if not (temp_folder / candidate_name).exists():
-        return candidate_name
-
-    number = 2
-
-    while True:
-        candidate_name = f"{stem}_{number}{suffix}"
-
-        if not (temp_folder / candidate_name).exists():
-            return candidate_name
-
-        number += 1
-
-
-def add_candidate_photo(user_id: int, candidate_key: str, file_name: str, file_content: bytes) -> dict: # тілька для temporary-папка
-    if not file_name:
-        raise ValueError("File name is empty")
-
-    suffix = Path(file_name).suffix.lower()
-
-    if suffix not in IMAGE_EXTENSIONS:
-        raise ValueError("Unsupported image format. Allowed: jpg, jpeg, png, webp")
-
+def add_candidate_photo(user_id: int, candidate_key: str, file_name: str, file_content: bytes) -> dict:
     with _candidate_locks_mutex:
         remove_stale_locks()
 
@@ -320,30 +279,14 @@ def add_candidate_photo(user_id: int, candidate_key: str, file_name: str, file_c
 
         temp_folder = get_candidate_temp_folder(user_id, candidate_key)
 
-        if not temp_folder.exists():
-            raise FileNotFoundError(f"Candidate temporary folder not found: {temp_folder}")
-
-        current_images = get_candidate_images(temp_folder)
-
-        if len(current_images) >= MAX_CANDIDATE_PHOTOS:
-            raise ValueError(f"Candidate already has maximum {MAX_CANDIDATE_PHOTOS} photos")
-
-        safe_original_name = Path(file_name).name
-        destination_name = get_free_photo_name(temp_folder=temp_folder, original_file_name=safe_original_name)
-
-        destination = temp_folder / destination_name
-
-        destination.write_bytes(file_content)
+        add_photo(folder=temp_folder, file_name=file_name, file_content=file_content)
 
         lock["last_activity"] = utc_now()
 
     return candidate_to_dict(candidate_key, user_id)
 
 
-def delete_candidate_photo(user_id: int, candidate_key: str, file_name: str) -> dict: # тілька для temporary-папка
-    if not file_name:
-        raise ValueError("File name is empty")
-
+def delete_candidate_photo(user_id: int, candidate_key: str, file_name: str) -> dict:
     with _candidate_locks_mutex:
         remove_stale_locks()
 
@@ -357,26 +300,11 @@ def delete_candidate_photo(user_id: int, candidate_key: str, file_name: str) -> 
 
         temp_folder = get_candidate_temp_folder(user_id, candidate_key)
 
-        if not temp_folder.exists():
-            raise FileNotFoundError(
-                f"Candidate temporary folder not found: {temp_folder}"
-            )
-
-        safe_file_name = Path(file_name).name
-        photo_path = temp_folder / safe_file_name
-
-        if not photo_path.exists() or not photo_path.is_file():
-            raise FileNotFoundError(f"Candidate photo not found: {safe_file_name}")
-
-        if photo_path.suffix.lower() not in IMAGE_EXTENSIONS:
-            raise ValueError("File is not a candidate image")
-
-        photo_path.unlink()
+        delete_photo(folder=temp_folder, file_name=file_name)
 
         lock["last_activity"] = utc_now()
 
     return candidate_to_dict(candidate_key, user_id)
-
 
 def get_candidate_file_prefix(final_name: str) -> str:
     final_name = final_name.strip()
@@ -431,7 +359,7 @@ def save_candidate(user_id: int, user_name: str, candidate_key: str, final_name:
         if not temp_folder.exists() or not temp_folder.is_dir():
             raise FileNotFoundError(f"Candidate temporary folder not found: {temp_folder}")
 
-        temp_images = get_candidate_images(temp_folder)
+        temp_images = get_images(temp_folder)
 
         if len(temp_images) == 0:
             raise ValueError("Candidate must have at least 1 photo")
@@ -453,7 +381,7 @@ def save_candidate(user_id: int, user_name: str, candidate_key: str, final_name:
         normalized_category = normalize_candidate_category(category)
 
         # Фото, які були у вихідній Wikipedia-папці.
-        source_image_names = {image.name for image in get_candidate_images(source_folder)}
+        source_image_names = {image.name for image in get_images(source_folder)}
 
         archivist_folder.mkdir(parents=True, exist_ok=True)
 
@@ -474,7 +402,7 @@ def save_candidate(user_id: int, user_name: str, candidate_key: str, final_name:
                 shutil.rmtree(final_folder)
             raise
 
-        saved_images = get_candidate_images(final_folder)
+        saved_images = get_images(final_folder)
 
         if len(saved_images) != len(temp_images):
             if final_folder.exists():

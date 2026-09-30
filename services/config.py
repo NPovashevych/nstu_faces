@@ -8,6 +8,7 @@ START_CANDIDATE_FOLDER = Path(r"Z:\Persons search")
 SKIPPED_CANDIDATE_FOLDER = Path(r"Z:\Skipped Persons")
 FINISH_CANDIDATE_FOLDER = Path(r"D:\data\Candidates")
 NEW_PERSONS_FOLDER = Path(r"D:\data\New Persons")
+LIKE_UNKNOWN_FOLDER = Path(r"D:\data\Like Unknown")
 
 # медіа для тестування - відео + фото
 TEST_MP4_LIGHT_FOLDER = Path(r"D:\faces\baza\test_mp4_light")
