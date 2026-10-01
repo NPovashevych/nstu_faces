@@ -5,7 +5,7 @@ import numpy as np
 
 from commons.common_model import get_insightface
 from commons.commons_base import cosine_similarity, normalize_vector
-from services.faiss.faiss_face_index import REFERENCE_FACE_INDEX
+from services.faiss.faiss_face_index import REFERENCE_FACE_INDEX, UNKNOWN_FACE_INDEX
 
 
 MIN_W = 15
@@ -15,6 +15,8 @@ BLUR_THRESHOLD = 15
 DUPLICATE_SIMILARITY = 0.98
 MAX_DIST_FROM_MEAN = 0.50
 MAX_PAIRWISE_DIST = 0.72
+REFERENCE_MATCH_DISTANCE = 0.54
+UNKNOWN_MATCH_DISTANCE = 0.40
 
 
 # Читання зображення через OpenCV
@@ -45,7 +47,7 @@ def find_reference_matches(valid_photos):
     for photo in valid_photos:
         metadata, distance = REFERENCE_FACE_INDEX.find_best_match(photo["embedding"])
 
-        if metadata is None:
+        if metadata is None or distance is None or distance > REFERENCE_MATCH_DISTANCE:
             continue
 
         matches.append({
@@ -54,6 +56,25 @@ def find_reference_matches(valid_photos):
             "person_name": metadata["person_name"],
             "q_code": metadata["q_code"],
             "embedding_id": metadata["embedding_id"],
+            "distance": round(float(distance), 4),
+        })
+
+    return matches
+
+
+# Пошук схожих unknown-кластерів для кожного фото
+def find_unknown_matches(valid_photos):
+    matches = []
+
+    for photo in valid_photos:
+        person_id, distance = UNKNOWN_FACE_INDEX.find_best_match(photo["embedding"])
+
+        if person_id is None or distance is None or distance > UNKNOWN_MATCH_DISTANCE:
+            continue
+
+        matches.append({
+            "file_name": photo["file_name"],
+            "person_id": person_id,
             "distance": round(float(distance), 4),
         })
 
@@ -180,7 +201,7 @@ def check_same_person(valid_photos):
 
 
 # Перевірка всіх фото в папці
-def check_image_folder(candidate_folder: Path, check_references: bool = False):
+def check_image_folder(candidate_folder: Path, check_references: bool = False, check_unknown: bool = False):
     model = get_insightface()
 
     photo_results = []
@@ -198,9 +219,13 @@ def check_image_folder(candidate_folder: Path, check_references: bool = False):
     duplicates = find_duplicate_photos(valid_photos)
     same_person_warnings = check_same_person(valid_photos)
     reference_matches = []
+    unknown_matches = []
 
     if check_references:
         reference_matches = find_reference_matches(valid_photos)
+
+    if check_unknown:
+        unknown_matches = find_unknown_matches(valid_photos)
 
     # Embedding потрібен тільки всередині сервісу
     for photo in photo_results:
@@ -214,5 +239,8 @@ def check_image_folder(candidate_folder: Path, check_references: bool = False):
 
     if check_references:
         result["reference_matches"] = reference_matches
+
+    if check_unknown:
+        result["unknown_matches"] = unknown_matches
 
     return result

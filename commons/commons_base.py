@@ -12,6 +12,7 @@ from db.enums import EmbeddingType
 from db.models import DBEmbedding, DBPerson
 from services.config import INTVNEWS_FREEZE_FOLDER, PROXY_NEWS_FOLDER, TEMPORARY_FREEZES_FOLDER, TEST_FREEZE_FOLDER, TEST_MP4_LIGHT_FOLDER, USER_UPLOAD_FOLDER
 
+
 # Нормалізація вектора
 def normalize_vector(vector) -> np.ndarray:
     vector = np.asarray(vector, dtype=np.float32)

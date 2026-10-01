@@ -8,6 +8,7 @@ from unidecode import unidecode
 
 from services.config import START_CANDIDATE_FOLDER, TEMPORARY_FREEZES_FOLDER, FINISH_CANDIDATE_FOLDER, SKIPPED_CANDIDATE_FOLDER
 from routes.additional.image_services import get_images, add_photo, delete_photo
+from routes.additional.create_folder_or_file_names import create_photo_file_name, normalize_photo_category, extract_candidate_name, extract_q_code
 
 
 CANDIDATE_TEMP_FOLDER = TEMPORARY_FREEZES_FOLDER / "candidates"
@@ -36,17 +37,6 @@ _candidate_cache_initialized = False # Кеш в пам'яті процесу AP
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
-
-
-def extract_q_code(folder_name: str) -> str | None:
-    match = re.search(r"\((Q\d+)\)\s*$", folder_name)
-    if match is None:
-        return None
-    return match.group(1)
-
-
-def extract_candidate_name(folder_name: str) -> str:
-    return re.sub(r"\s*\(Q\d+\)\s*$", "", folder_name).strip()
 
 
 def get_candidate_source_folder(candidate_key: str) -> Path:
@@ -306,25 +296,6 @@ def delete_candidate_photo(user_id: int, candidate_key: str, file_name: str) -> 
 
     return candidate_to_dict(candidate_key, user_id)
 
-def get_candidate_file_prefix(final_name: str) -> str:
-    final_name = final_name.strip()
-
-    if not final_name:
-        raise ValueError("Final candidate name is empty")
-
-    surname = final_name.split()[0]
-    prefix = unidecode(surname).lower()
-    prefix = "".join(char for char in prefix if char.isalnum() or char in {"-", "_"})
-
-    if not prefix:
-        raise ValueError("Cannot create photo file prefix")
-    return prefix
-
-
-def normalize_candidate_category(category: str | None) -> str:
-    category = (category or "").strip().lower()
-    return "".join(char for char in category if char.isalnum() or char in {"-", "_"})
-
 
 def build_final_candidate_folder_name(final_name: str, q_code: str | None) -> str:
     final_name = final_name.strip()
@@ -377,8 +348,7 @@ def save_candidate(user_id: int, user_name: str, candidate_key: str, final_name:
         if final_folder.exists():
             raise FileExistsError(f"Final candidate folder already exists: {final_folder}")
 
-        prefix = get_candidate_file_prefix(final_name)
-        normalized_category = normalize_candidate_category(category)
+        normalized_category = normalize_photo_category(category)
 
         # Фото, які були у вихідній Wikipedia-папці.
         source_image_names = {image.name for image in get_images(source_folder)}
@@ -392,7 +362,7 @@ def save_candidate(user_id: int, user_name: str, candidate_key: str, final_name:
                 if temp_image.name in source_image_names:
                     destination_name = temp_image.name
                 else:
-                    destination_name = f"{prefix}_{normalized_category}_{new_photo_number}{temp_image.suffix.lower()}"
+                    destination_name = create_photo_file_name(person_name=final_name, category=normalized_category, number=new_photo_number, extension=temp_image.suffix)
                     new_photo_number += 1
                 destination = final_folder / destination_name
                 shutil.copy2(temp_image, destination)

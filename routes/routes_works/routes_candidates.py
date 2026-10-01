@@ -7,7 +7,7 @@ from routes.additional.candidates.candidate_service import save_candidate, skip_
 from routes.additional.candidates.candidate_service import touch_candidate, get_candidate_temp_folder
 from routes.additional.image_inspections import check_image_folder
 from routes.additional.user_services import get_user
-from routes.classes.candidates import CandidateSaveRequest, CandidateUserRequest, CandidateSkipRequest, CandidateCancelRequest, CandidateCheckRequest
+from routes.classes.class_for_route_candidates import CandidateSaveRequest, CandidateUserRequest, CandidateSkipRequest, CandidateCancelRequest, CandidateCheckRequest
 
 router = APIRouter(prefix="/candidates", tags=["candidates"])
 

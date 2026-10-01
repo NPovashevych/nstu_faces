@@ -3,19 +3,15 @@ from sqlalchemy.orm import Session
 
 from db.enums import PersonStatus
 from db.models import DBPerson
+from routes.additional.new_person.validation import validate_ukrainian_text, validate_q_code
 
 
 NAME_SIMILARITY_THRESHOLD = 90
 
 
 def find_person_in_db(db: Session, name: str, q_code: str | None = None) -> dict:
-    name = " ".join(name.strip().lower().split())
-
-    if not name:
-        raise ValueError("Person name is empty")
-
-    q_code = (q_code or "").strip().upper()
-
+    name = validate_ukrainian_text(name, "Person name").lower()
+    q_code = validate_q_code(q_code)
     persons = db.query(DBPerson).filter(DBPerson.status.in_([PersonStatus.public, PersonStatus.non_public])).all()
 
     if q_code:
